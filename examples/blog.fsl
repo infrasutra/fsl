@@ -1,0 +1,22 @@
+@icon("newspaper")
+@description("Blog articles with categories and tags")
+type Article {
+  title: String! @minLength(1) @maxLength(200) @searchable
+  slug: String! @pattern("^[a-z0-9-]+$") @unique @index
+  body: RichText @blocks("paragraph", "heading", "list", "image", "code")
+  excerpt: Text @maxLength(500)
+  publishedAt: DateTime @index
+  category: Category! @relation(inverse: "articles", onDelete: "restrict")
+  tags: [String!]! @minItems(1) @maxItems(10)
+  heroImage: Image @formats("jpg", "png", "webp") @maxSize(5000000)
+  featured: Boolean @default(false)
+}
+
+@icon("folder")
+@description("Article categories")
+type Category {
+  name: String! @maxLength(100)
+  slug: String! @unique
+  description: Text
+  articles: [Article!] @relation(inverse: "category")
+}

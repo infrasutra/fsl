@@ -1,0 +1,23 @@
+@icon("shopping-cart")
+@description("Products for sale")
+type Product {
+  name: String! @maxLength(200) @searchable
+  slug: String! @unique @index
+  description: RichText
+  price: Float! @min(0) @precision(2)
+  compareAtPrice: Float @min(0) @precision(2)
+  sku: String! @unique
+  inventory: Int @min(0) @default(0)
+  category: ProductCategory! @relation(inverse: "products")
+  images: [Image!] @formats("jpg", "png", "webp")
+  featured: Boolean @default(false)
+  status: String @default("draft")
+}
+
+@icon("tag")
+@description("Product categories")
+type ProductCategory {
+  name: String! @maxLength(100)
+  slug: String! @unique
+  products: [Product!] @relation(inverse: "category")
+}
