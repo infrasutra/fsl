@@ -9,6 +9,7 @@ import (
 
 	"github.com/infrasutra/fsl/parser"
 	"github.com/infrasutra/fsl/sdk"
+	"github.com/infrasutra/fsl/sdk/python"
 	"github.com/infrasutra/fsl/sdk/typescript"
 	"github.com/spf13/cobra"
 )
@@ -28,10 +29,11 @@ var generateCmd = &cobra.Command{
 
 Targets:
   typescript  Generate TypeScript SDK
+  python      Generate Python SDK
 
 Examples:
   fsl generate typescript --schema=./schemas/ --output=./sdk/
-  fsl generate typescript --client=axios`,
+  fsl generate python --schema=./schemas/ --output=./sdk/`,
 }
 
 var generateTypescriptCmd = &cobra.Command{
@@ -46,15 +48,30 @@ The generated SDK includes:
 	RunE: runGenerateTypescript,
 }
 
+var generatePythonCmd = &cobra.Command{
+	Use:   "python",
+	Short: "Generate Python SDK",
+	Long: `Generate a Python SDK from FSL schemas.
+
+The generated SDK includes:
+  - Pydantic models for all schema types
+  - httpx-based API client for content delivery
+  - Full Python type safety`,
+	RunE: runGeneratePython,
+}
+
 func init() {
 	rootCmd.AddCommand(generateCmd)
 	generateCmd.AddCommand(generateTypescriptCmd)
+	generateCmd.AddCommand(generatePythonCmd)
 
 	generateCmd.PersistentFlags().StringVar(&generateSchemaPath, "schema", "", "Schema file or directory")
 	generateCmd.PersistentFlags().StringVar(&generateOutputPath, "output", "", "Output directory")
 	generateTypescriptCmd.Flags().StringVar(&generateClient, "client", "fetch", "HTTP client: fetch, axios")
 	generateTypescriptCmd.Flags().StringVar(&generateTarget, "target", "content", "API target: content or cms")
 	generateTypescriptCmd.Flags().StringVar(&generateWorkspaceAPIID, "workspace-api-id", "", "Workspace API ID for content SDK default")
+	generatePythonCmd.Flags().StringVar(&generateTarget, "target", "content", "API target: content or cms")
+	generatePythonCmd.Flags().StringVar(&generateWorkspaceAPIID, "workspace-api-id", "", "Workspace API ID for content SDK default")
 }
 
 func runGenerateTypescript(cmd *cobra.Command, args []string) error {
@@ -171,6 +188,108 @@ func runGenerateTypescript(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("\033[32m✓\033[0m Generated TypeScript SDK in %s\n", outputPath)
+	fmt.Printf("  - schemas: %d\n", len(compiledSchemas))
+	fmt.Printf("  - files (%d): %s\n", len(fileNames), strings.Join(fileNames, ", "))
+
+	return nil
+}
+
+func runGeneratePython(cmd *cobra.Command, args []string) error {
+	target := generateTarget
+	switch target {
+	case "content":
+		// valid
+	case "cms":
+		return fmt.Errorf("CMS SDK generation requires schema IDs and should be generated via the server SDK endpoint")
+	default:
+		return fmt.Errorf("invalid target %q: must be content or cms", target)
+	}
+
+	schemaPath := generateSchemaPath
+	if schemaPath == "" {
+		if cfg := GetConfig(); cfg != nil && cfg.Schemas.Directory != "" {
+			schemaPath = cfg.Schemas.Directory
+		} else {
+			schemaPath = GetSchemaDirectory()
+		}
+	}
+
+	outputPath := generateOutputPath
+	if outputPath == "" {
+		if cfg := GetConfig(); cfg != nil && cfg.Output.Python.Directory != "" {
+			outputPath = cfg.Output.Python.Directory
+		} else {
+			outputPath = "./sdk-python"
+		}
+	}
+
+	files, err := collectFSLFiles([]string{schemaPath})
+	if err != nil {
+		return err
+	}
+
+	compiledSchemas := make([]*parser.CompiledSchema, 0)
+	for _, file := range files {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			return fmt.Errorf("cannot read %s: %w", file, err)
+		}
+
+		result := parser.ParseWithDiagnostics(string(content))
+		if !result.Valid {
+			message := "unknown error"
+			if len(result.Diagnostics) > 0 {
+				message = result.Diagnostics[0].Message
+			}
+			return fmt.Errorf("schema validation failed in %s: %s", file, message)
+		}
+
+		for _, typeDef := range result.Schema.Types {
+			derived := deriveApiID(typeDef.Name)
+			compiled, err := parser.Compile(result.Schema, typeDef.Name, derived, false)
+			if err != nil {
+				return fmt.Errorf("failed to compile schema %s in %s: %w", typeDef.Name, file, err)
+			}
+			compiled.ApiID = derived
+			compiledSchemas = append(compiledSchemas, compiled)
+		}
+	}
+
+	if err := os.MkdirAll(outputPath, 0o755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
+	}
+
+	baseURL := ""
+	if cfg := GetConfig(); cfg != nil && cfg.Workspace.APIURL != "" {
+		baseURL = cfg.Workspace.APIURL
+	}
+
+	generator := python.New()
+	generated, err := generator.Generate(compiledSchemas, sdk.GeneratorConfig{
+		BaseURL:        baseURL,
+		WorkspaceAPIID: generateWorkspaceAPIID,
+		IncludeClient:  true,
+		TargetAPI:      target,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to generate Python SDK: %w", err)
+	}
+
+	fileNames := make([]string, 0, len(generated.Files))
+	for name := range generated.Files {
+		fileNames = append(fileNames, name)
+	}
+	sort.Strings(fileNames)
+
+	for _, name := range fileNames {
+		content := generated.Files[name]
+		filePath := filepath.Join(outputPath, name)
+		if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
+			return fmt.Errorf("failed to write %s: %w", name, err)
+		}
+	}
+
+	fmt.Printf("\033[32m✓\033[0m Generated Python SDK in %s\n", outputPath)
 	fmt.Printf("  - schemas: %d\n", len(compiledSchemas))
 	fmt.Printf("  - files (%d): %s\n", len(fileNames), strings.Join(fileNames, ", "))
 

@@ -665,3 +665,8 @@ type ReferenceParams struct {
 type ReferenceContext struct {
 	IncludeDeclaration bool `json:"includeDeclaration"`
 }
+
+// RenameOptions represents rename server options
+type RenameOptions struct {
+	PrepareProvider bool `json:"prepareProvider,omitempty"`
+}
