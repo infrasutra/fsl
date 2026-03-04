@@ -51,7 +51,6 @@ func ParseWithDiagnostics(source string) *DiagnosticsResult {
 	lexer := NewLexer(source)
 	parser := NewParser(lexer)
 	schema, err := parser.ParseSchema()
-
 	if err != nil {
 		result.Valid = false
 		// Extract line/column from parser error
@@ -78,7 +77,7 @@ func ParseWithDiagnostics(source string) *DiagnosticsResult {
 }
 
 // parseErrorToDiagnostic converts a parser error string to a Diagnostic
-func parseErrorToDiagnostic(errMsg string, source string) Diagnostic {
+func parseErrorToDiagnostic(errMsg, source string) Diagnostic {
 	diag := Diagnostic{
 		Severity:    SeverityError,
 		Message:     errMsg,
@@ -328,7 +327,7 @@ func ValidateData(data map[string]any, schema *CompiledSchema) []ValidationError
 		}
 
 		// Validate field value
-		fieldErrors := validateFieldValue(field.Name, value, &field)
+		fieldErrors := validateFieldValue(field.Name, value, &field, schema)
 		errors = append(errors, fieldErrors...)
 	}
 
@@ -345,7 +344,7 @@ func ValidateData(data map[string]any, schema *CompiledSchema) []ValidationError
 	return errors
 }
 
-func validateFieldValue(fieldName string, value any, field *CompiledField) []ValidationError {
+func validateFieldValue(fieldName string, value any, field *CompiledField, schema *CompiledSchema) []ValidationError {
 	var errors []ValidationError
 
 	// Handle nil values
@@ -382,7 +381,7 @@ func validateFieldValue(fieldName string, value any, field *CompiledField) []Val
 
 		// Validate each array element
 		for i, elem := range arr {
-			elemErrors := validatePrimitiveValue(fmt.Sprintf("%s[%d]", fieldName, i), elem, field.Type, field)
+			elemErrors := validatePrimitiveValue(fmt.Sprintf("%s[%d]", fieldName, i), elem, field.Type, field, schema)
 			errors = append(errors, elemErrors...)
 		}
 
@@ -390,7 +389,7 @@ func validateFieldValue(fieldName string, value any, field *CompiledField) []Val
 	}
 
 	// Validate primitive value
-	errors = append(errors, validatePrimitiveValue(fieldName, value, field.Type, field)...)
+	errors = append(errors, validatePrimitiveValue(fieldName, value, field.Type, field, schema)...)
 
 	// Validate decorators
 	errors = append(errors, validateDecorators(fieldName, value, field)...)
@@ -398,7 +397,7 @@ func validateFieldValue(fieldName string, value any, field *CompiledField) []Val
 	return errors
 }
 
-func validatePrimitiveValue(fieldName string, value any, fieldType string, field *CompiledField) []ValidationError {
+func validatePrimitiveValue(fieldName string, value any, fieldType string, field *CompiledField, schema *CompiledSchema) []ValidationError {
 	var errors []ValidationError
 
 	switch fieldType {
@@ -489,6 +488,12 @@ func validatePrimitiveValue(fieldName string, value any, fieldType string, field
 		}
 
 	case TypeJSON:
+		sliceMapping := getSliceMapping(field)
+		if len(sliceMapping) > 0 {
+			errors = append(errors, validateSliceZone(fieldName, value, sliceMapping, schema)...)
+			break
+		}
+
 		// JSON can be any type - no validation needed
 		// But we should ensure it's serializable
 		if !isJSONSerializable(value) {
@@ -543,6 +548,159 @@ func validatePrimitiveValue(fieldName string, value any, fieldType string, field
 			errors = append(errors, validateRelationReference(fieldName, value)...)
 		}
 		// Named enums and custom types need schema context for full validation
+	}
+
+	return errors
+}
+
+func getSliceMapping(field *CompiledField) map[string]string {
+	mapping := make(map[string]string)
+
+	for _, slice := range field.Slices {
+		if slice.Type == "" || slice.Schema == "" {
+			continue
+		}
+		mapping[slice.Type] = slice.Schema
+	}
+
+	if len(mapping) > 0 {
+		return mapping
+	}
+
+	raw, ok := field.Decorators[DecSlices]
+	if !ok {
+		return mapping
+	}
+
+	decoratorMap, ok := raw.(map[string]any)
+	if !ok {
+		return mapping
+	}
+
+	for sliceType, target := range decoratorMap {
+		if targetType, ok := target.(string); ok && sliceType != "" && targetType != "" {
+			mapping[sliceType] = targetType
+		}
+	}
+
+	return mapping
+}
+
+func buildComponentIndex(schema *CompiledSchema) map[string]*CompiledComponent {
+	index := make(map[string]*CompiledComponent, len(schema.Components))
+	for i := range schema.Components {
+		index[schema.Components[i].Name] = &schema.Components[i]
+	}
+	return index
+}
+
+func validateSliceZone(fieldName string, value any, sliceMapping map[string]string, schema *CompiledSchema) []ValidationError {
+	var errors []ValidationError
+
+	items, ok := value.([]any)
+	if !ok {
+		return []ValidationError{{
+			Field:   fieldName,
+			Message: "slice zone must be an array of slice objects",
+		}}
+	}
+
+	componentIndex := buildComponentIndex(schema)
+
+	for idx, item := range items {
+		slicePath := fmt.Sprintf("%s[%d]", fieldName, idx)
+
+		sliceObj, ok := item.(map[string]any)
+		if !ok {
+			errors = append(errors, ValidationError{
+				Field:   slicePath,
+				Message: "slice item must be an object",
+			})
+			continue
+		}
+
+		sliceType, ok := sliceObj["type"].(string)
+		if !ok || strings.TrimSpace(sliceType) == "" {
+			errors = append(errors, ValidationError{
+				Field:   slicePath,
+				Message: "slice item must include a string 'type'",
+			})
+			continue
+		}
+
+		componentName, ok := sliceMapping[sliceType]
+		if !ok {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("%s.type", slicePath),
+				Message: fmt.Sprintf("unknown slice type '%s'", sliceType),
+			})
+			continue
+		}
+
+		component := componentIndex[componentName]
+		if component == nil {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("%s.type", slicePath),
+				Message: fmt.Sprintf("slice type '%s' references missing component '%s'", sliceType, componentName),
+			})
+			continue
+		}
+
+		rawData, exists := sliceObj["data"]
+		if !exists {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("%s.data", slicePath),
+				Message: "slice item must include a 'data' object",
+			})
+			continue
+		}
+
+		dataMap, ok := rawData.(map[string]any)
+		if !ok {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("%s.data", slicePath),
+				Message: "slice data must be an object",
+			})
+			continue
+		}
+
+		fieldMap := make(map[string]struct{}, len(component.Fields))
+		for i := range component.Fields {
+			f := component.Fields[i]
+			fieldMap[f.Name] = struct{}{}
+
+			value, exists := dataMap[f.Name]
+			if f.Required && !exists {
+				errors = append(errors, ValidationError{
+					Field:   fmt.Sprintf("%s.data.%s", slicePath, f.Name),
+					Message: "field is required",
+				})
+				continue
+			}
+
+			if f.Array && f.ArrayReq && !exists {
+				errors = append(errors, ValidationError{
+					Field:   fmt.Sprintf("%s.data.%s", slicePath, f.Name),
+					Message: "array field is required",
+				})
+				continue
+			}
+
+			if !exists {
+				continue
+			}
+
+			errors = append(errors, validateFieldValue(fmt.Sprintf("%s.data.%s", slicePath, f.Name), value, &f, schema)...)
+		}
+
+		for key := range dataMap {
+			if _, ok := fieldMap[key]; !ok {
+				errors = append(errors, ValidationError{
+					Field:   fmt.Sprintf("%s.data.%s", slicePath, key),
+					Message: "unexpected field",
+				})
+			}
+		}
 	}
 
 	return errors

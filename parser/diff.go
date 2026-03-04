@@ -27,9 +27,9 @@ const (
 
 // SchemaChange represents a single change between schema versions
 type SchemaChange struct {
-	Type      ChangeType `json:"type"`      // added, removed, modified
-	Kind      ChangeKind `json:"kind"`      // field, decorator, enum, relation
-	Path      string     `json:"path"`      // e.g., "fields.title", "fields.author.decorators.maxLength"
+	Type      ChangeType `json:"type"` // added, removed, modified
+	Kind      ChangeKind `json:"kind"` // field, decorator, enum, relation
+	Path      string     `json:"path"` // e.g., "fields.title", "fields.author.decorators.maxLength"
 	FieldName string     `json:"fieldName,omitempty"`
 	OldValue  any        `json:"oldValue,omitempty"`
 	NewValue  any        `json:"newValue,omitempty"`

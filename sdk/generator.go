@@ -31,6 +31,9 @@ type GeneratorConfig struct {
 	// WorkspaceID is the workspace identifier
 	WorkspaceID string
 
+	// ProjectID is the project identifier for CMS APIs
+	ProjectID string
+
 	// WorkspaceAPIID is the workspace API identifier
 	WorkspaceAPIID string
 

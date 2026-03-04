@@ -89,24 +89,24 @@ type DiagnosticRelatedInformation struct {
 
 // CompletionItem represents a completion suggestion
 type CompletionItem struct {
-	Label               string             `json:"label"`
+	Label               string                      `json:"label"`
 	LabelDetails        *CompletionItemLabelDetails `json:"labelDetails,omitempty"`
-	Kind                CompletionItemKind `json:"kind,omitempty"`
-	Tags                []CompletionItemTag `json:"tags,omitempty"`
-	Detail              string             `json:"detail,omitempty"`
-	Documentation       interface{}        `json:"documentation,omitempty"`
-	Deprecated          bool               `json:"deprecated,omitempty"`
-	Preselect           bool               `json:"preselect,omitempty"`
-	SortText            string             `json:"sortText,omitempty"`
-	FilterText          string             `json:"filterText,omitempty"`
-	InsertText          string             `json:"insertText,omitempty"`
-	InsertTextFormat    InsertTextFormat   `json:"insertTextFormat,omitempty"`
-	InsertTextMode      InsertTextMode     `json:"insertTextMode,omitempty"`
-	TextEdit            *TextEdit          `json:"textEdit,omitempty"`
-	AdditionalTextEdits []TextEdit         `json:"additionalTextEdits,omitempty"`
-	CommitCharacters    []string           `json:"commitCharacters,omitempty"`
-	Command             *Command           `json:"command,omitempty"`
-	Data                interface{}        `json:"data,omitempty"`
+	Kind                CompletionItemKind          `json:"kind,omitempty"`
+	Tags                []CompletionItemTag         `json:"tags,omitempty"`
+	Detail              string                      `json:"detail,omitempty"`
+	Documentation       interface{}                 `json:"documentation,omitempty"`
+	Deprecated          bool                        `json:"deprecated,omitempty"`
+	Preselect           bool                        `json:"preselect,omitempty"`
+	SortText            string                      `json:"sortText,omitempty"`
+	FilterText          string                      `json:"filterText,omitempty"`
+	InsertText          string                      `json:"insertText,omitempty"`
+	InsertTextFormat    InsertTextFormat            `json:"insertTextFormat,omitempty"`
+	InsertTextMode      InsertTextMode              `json:"insertTextMode,omitempty"`
+	TextEdit            *TextEdit                   `json:"textEdit,omitempty"`
+	AdditionalTextEdits []TextEdit                  `json:"additionalTextEdits,omitempty"`
+	CommitCharacters    []string                    `json:"commitCharacters,omitempty"`
+	Command             *Command                    `json:"command,omitempty"`
+	Data                interface{}                 `json:"data,omitempty"`
 }
 
 // CompletionItemLabelDetails provides extra detail for a completion item
@@ -261,25 +261,25 @@ const (
 
 // SymbolInformation represents information about a symbol
 type SymbolInformation struct {
-	Name          string     `json:"name"`
-	Kind          SymbolKind `json:"kind"`
+	Name          string      `json:"name"`
+	Kind          SymbolKind  `json:"kind"`
 	Tags          []SymbolTag `json:"tags,omitempty"`
-	Deprecated    bool       `json:"deprecated,omitempty"`
-	Location      Location   `json:"location"`
-	ContainerName string     `json:"containerName,omitempty"`
+	Deprecated    bool        `json:"deprecated,omitempty"`
+	Location      Location    `json:"location"`
+	ContainerName string      `json:"containerName,omitempty"`
 }
 
 // InitializeParams represents initialization parameters
 type InitializeParams struct {
-	ProcessID             *int                 `json:"processId"`
-	ClientInfo            *ClientInfo          `json:"clientInfo,omitempty"`
-	Locale                string               `json:"locale,omitempty"`
-	RootPath              *string              `json:"rootPath,omitempty"`
-	RootURI               *string              `json:"rootUri"`
-	InitializationOptions interface{}          `json:"initializationOptions,omitempty"`
-	Capabilities          ClientCapabilities   `json:"capabilities"`
-	Trace                 string               `json:"trace,omitempty"`
-	WorkspaceFolders      []WorkspaceFolder    `json:"workspaceFolders,omitempty"`
+	ProcessID             *int               `json:"processId"`
+	ClientInfo            *ClientInfo        `json:"clientInfo,omitempty"`
+	Locale                string             `json:"locale,omitempty"`
+	RootPath              *string            `json:"rootPath,omitempty"`
+	RootURI               *string            `json:"rootUri"`
+	InitializationOptions interface{}        `json:"initializationOptions,omitempty"`
+	Capabilities          ClientCapabilities `json:"capabilities"`
+	Trace                 string             `json:"trace,omitempty"`
+	WorkspaceFolders      []WorkspaceFolder  `json:"workspaceFolders,omitempty"`
 }
 
 // ClientInfo represents client information
@@ -299,13 +299,13 @@ type ClientCapabilities struct {
 
 // WorkspaceClientCapabilities represents workspace capabilities
 type WorkspaceClientCapabilities struct {
-	ApplyEdit              bool                            `json:"applyEdit,omitempty"`
-	WorkspaceEdit          *WorkspaceEditClientCapabilities `json:"workspaceEdit,omitempty"`
+	ApplyEdit              bool                                      `json:"applyEdit,omitempty"`
+	WorkspaceEdit          *WorkspaceEditClientCapabilities          `json:"workspaceEdit,omitempty"`
 	DidChangeConfiguration *DidChangeConfigurationClientCapabilities `json:"didChangeConfiguration,omitempty"`
-	DidChangeWatchedFiles  *DidChangeWatchedFilesClientCapabilities `json:"didChangeWatchedFiles,omitempty"`
-	Symbol                 *WorkspaceSymbolClientCapabilities `json:"symbol,omitempty"`
-	Configuration          bool                            `json:"configuration,omitempty"`
-	WorkspaceFolders       bool                            `json:"workspaceFolders,omitempty"`
+	DidChangeWatchedFiles  *DidChangeWatchedFilesClientCapabilities  `json:"didChangeWatchedFiles,omitempty"`
+	Symbol                 *WorkspaceSymbolClientCapabilities        `json:"symbol,omitempty"`
+	Configuration          bool                                      `json:"configuration,omitempty"`
+	WorkspaceFolders       bool                                      `json:"workspaceFolders,omitempty"`
 }
 
 // WorkspaceEditClientCapabilities represents workspace edit capabilities
@@ -327,8 +327,8 @@ type DidChangeWatchedFilesClientCapabilities struct {
 
 // WorkspaceSymbolClientCapabilities represents workspace symbol capabilities
 type WorkspaceSymbolClientCapabilities struct {
-	DynamicRegistration bool                            `json:"dynamicRegistration,omitempty"`
-	SymbolKind          *SymbolKindClientCapabilities   `json:"symbolKind,omitempty"`
+	DynamicRegistration bool                          `json:"dynamicRegistration,omitempty"`
+	SymbolKind          *SymbolKindClientCapabilities `json:"symbolKind,omitempty"`
 }
 
 // SymbolKindClientCapabilities represents symbol kind capabilities
@@ -338,16 +338,16 @@ type SymbolKindClientCapabilities struct {
 
 // TextDocumentClientCapabilities represents text document capabilities
 type TextDocumentClientCapabilities struct {
-	Synchronization    *TextDocumentSyncClientCapabilities `json:"synchronization,omitempty"`
-	Completion         *CompletionClientCapabilities       `json:"completion,omitempty"`
-	Hover              *HoverClientCapabilities            `json:"hover,omitempty"`
-	SignatureHelp      *SignatureHelpClientCapabilities    `json:"signatureHelp,omitempty"`
-	References         *ReferenceClientCapabilities        `json:"references,omitempty"`
-	DocumentHighlight  *DocumentHighlightClientCapabilities `json:"documentHighlight,omitempty"`
-	DocumentSymbol     *DocumentSymbolClientCapabilities   `json:"documentSymbol,omitempty"`
+	Synchronization    *TextDocumentSyncClientCapabilities   `json:"synchronization,omitempty"`
+	Completion         *CompletionClientCapabilities         `json:"completion,omitempty"`
+	Hover              *HoverClientCapabilities              `json:"hover,omitempty"`
+	SignatureHelp      *SignatureHelpClientCapabilities      `json:"signatureHelp,omitempty"`
+	References         *ReferenceClientCapabilities          `json:"references,omitempty"`
+	DocumentHighlight  *DocumentHighlightClientCapabilities  `json:"documentHighlight,omitempty"`
+	DocumentSymbol     *DocumentSymbolClientCapabilities     `json:"documentSymbol,omitempty"`
 	Formatting         *DocumentFormattingClientCapabilities `json:"formatting,omitempty"`
-	Definition         *DefinitionClientCapabilities       `json:"definition,omitempty"`
-	CodeAction         *CodeActionClientCapabilities       `json:"codeAction,omitempty"`
+	Definition         *DefinitionClientCapabilities         `json:"definition,omitempty"`
+	CodeAction         *CodeActionClientCapabilities         `json:"codeAction,omitempty"`
 	PublishDiagnostics *PublishDiagnosticsClientCapabilities `json:"publishDiagnostics,omitempty"`
 }
 
@@ -361,10 +361,10 @@ type TextDocumentSyncClientCapabilities struct {
 
 // CompletionClientCapabilities represents completion capabilities
 type CompletionClientCapabilities struct {
-	DynamicRegistration bool                             `json:"dynamicRegistration,omitempty"`
-	CompletionItem      *CompletionItemClientCapabilities `json:"completionItem,omitempty"`
+	DynamicRegistration bool                                  `json:"dynamicRegistration,omitempty"`
+	CompletionItem      *CompletionItemClientCapabilities     `json:"completionItem,omitempty"`
 	CompletionItemKind  *CompletionItemKindClientCapabilities `json:"completionItemKind,omitempty"`
-	ContextSupport      bool                             `json:"contextSupport,omitempty"`
+	ContextSupport      bool                                  `json:"contextSupport,omitempty"`
 }
 
 // CompletionItemClientCapabilities represents completion item capabilities
@@ -383,19 +383,19 @@ type CompletionItemKindClientCapabilities struct {
 
 // HoverClientCapabilities represents hover capabilities
 type HoverClientCapabilities struct {
-	DynamicRegistration bool       `json:"dynamicRegistration,omitempty"`
+	DynamicRegistration bool         `json:"dynamicRegistration,omitempty"`
 	ContentFormat       []MarkupKind `json:"contentFormat,omitempty"`
 }
 
 // SignatureHelpClientCapabilities represents signature help capabilities
 type SignatureHelpClientCapabilities struct {
-	DynamicRegistration  bool                                      `json:"dynamicRegistration,omitempty"`
+	DynamicRegistration  bool                                    `json:"dynamicRegistration,omitempty"`
 	SignatureInformation *SignatureInformationClientCapabilities `json:"signatureInformation,omitempty"`
 }
 
 // SignatureInformationClientCapabilities represents signature info capabilities
 type SignatureInformationClientCapabilities struct {
-	DocumentationFormat  []MarkupKind `json:"documentationFormat,omitempty"`
+	DocumentationFormat  []MarkupKind                            `json:"documentationFormat,omitempty"`
 	ParameterInformation *ParameterInformationClientCapabilities `json:"parameterInformation,omitempty"`
 }
 
@@ -434,8 +434,8 @@ type DefinitionClientCapabilities struct {
 
 // CodeActionClientCapabilities represents code action capabilities
 type CodeActionClientCapabilities struct {
-	DynamicRegistration      bool                              `json:"dynamicRegistration,omitempty"`
-	CodeActionLiteralSupport *CodeActionLiteralSupport         `json:"codeActionLiteralSupport,omitempty"`
+	DynamicRegistration      bool                      `json:"dynamicRegistration,omitempty"`
+	CodeActionLiteralSupport *CodeActionLiteralSupport `json:"codeActionLiteralSupport,omitempty"`
 }
 
 // CodeActionLiteralSupport represents code action literal support
@@ -450,11 +450,11 @@ type CodeActionKindValueSet struct {
 
 // PublishDiagnosticsClientCapabilities represents publish diagnostics capabilities
 type PublishDiagnosticsClientCapabilities struct {
-	RelatedInformation     bool `json:"relatedInformation,omitempty"`
+	RelatedInformation     bool                  `json:"relatedInformation,omitempty"`
 	TagSupport             *DiagnosticTagSupport `json:"tagSupport,omitempty"`
-	VersionSupport         bool `json:"versionSupport,omitempty"`
-	CodeDescriptionSupport bool `json:"codeDescriptionSupport,omitempty"`
-	DataSupport            bool `json:"dataSupport,omitempty"`
+	VersionSupport         bool                  `json:"versionSupport,omitempty"`
+	CodeDescriptionSupport bool                  `json:"codeDescriptionSupport,omitempty"`
+	DataSupport            bool                  `json:"dataSupport,omitempty"`
 }
 
 // DiagnosticTagSupport represents diagnostic tag support
@@ -464,9 +464,9 @@ type DiagnosticTagSupport struct {
 
 // WindowClientCapabilities represents window capabilities
 type WindowClientCapabilities struct {
-	WorkDoneProgress bool `json:"workDoneProgress,omitempty"`
+	WorkDoneProgress bool                                  `json:"workDoneProgress,omitempty"`
 	ShowMessage      *ShowMessageRequestClientCapabilities `json:"showMessage,omitempty"`
-	ShowDocument     *ShowDocumentClientCapabilities `json:"showDocument,omitempty"`
+	ShowDocument     *ShowDocumentClientCapabilities       `json:"showDocument,omitempty"`
 }
 
 // ShowMessageRequestClientCapabilities represents show message capabilities
@@ -486,14 +486,14 @@ type ShowDocumentClientCapabilities struct {
 
 // GeneralClientCapabilities represents general capabilities
 type GeneralClientCapabilities struct {
-	StaleRequestSupport *StaleRequestSupportCapabilities `json:"staleRequestSupport,omitempty"`
+	StaleRequestSupport *StaleRequestSupportCapabilities      `json:"staleRequestSupport,omitempty"`
 	RegularExpressions  *RegularExpressionsClientCapabilities `json:"regularExpressions,omitempty"`
-	Markdown            *MarkdownClientCapabilities `json:"markdown,omitempty"`
+	Markdown            *MarkdownClientCapabilities           `json:"markdown,omitempty"`
 }
 
 // StaleRequestSupportCapabilities represents stale request support
 type StaleRequestSupportCapabilities struct {
-	Cancel                  bool     `json:"cancel,omitempty"`
+	Cancel                 bool     `json:"cancel,omitempty"`
 	RetryOnContentModified []string `json:"retryOnContentModified,omitempty"`
 }
 
@@ -505,8 +505,8 @@ type RegularExpressionsClientCapabilities struct {
 
 // MarkdownClientCapabilities represents markdown capabilities
 type MarkdownClientCapabilities struct {
-	Parser  string   `json:"parser,omitempty"`
-	Version string   `json:"version,omitempty"`
+	Parser      string   `json:"parser,omitempty"`
+	Version     string   `json:"version,omitempty"`
 	AllowedTags []string `json:"allowedTags,omitempty"`
 }
 
@@ -561,9 +561,9 @@ type WorkspaceFoldersServerCapabilities struct {
 
 // CompletionOptions represents completion server options
 type CompletionOptions struct {
-	TriggerCharacters   []string `json:"triggerCharacters,omitempty"`
-	ResolveProvider     bool     `json:"resolveProvider,omitempty"`
-	WorkDoneProgress    bool     `json:"workDoneProgress,omitempty"`
+	TriggerCharacters []string `json:"triggerCharacters,omitempty"`
+	ResolveProvider   bool     `json:"resolveProvider,omitempty"`
+	WorkDoneProgress  bool     `json:"workDoneProgress,omitempty"`
 }
 
 // SignatureHelpOptions represents signature help options

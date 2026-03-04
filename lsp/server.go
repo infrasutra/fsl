@@ -64,12 +64,12 @@ func (s *Server) Run(ctx context.Context) error {
 
 // JSONRPCMessage represents a JSON-RPC 2.0 message
 type JSONRPCMessage struct {
-	JSONRPC string          `json:"jsonrpc"`
+	JSONRPC string           `json:"jsonrpc"`
 	ID      *json.RawMessage `json:"id,omitempty"`
-	Method  string          `json:"method,omitempty"`
-	Params  json.RawMessage `json:"params,omitempty"`
-	Result  json.RawMessage `json:"result,omitempty"`
-	Error   *JSONRPCError   `json:"error,omitempty"`
+	Method  string           `json:"method,omitempty"`
+	Params  json.RawMessage  `json:"params,omitempty"`
+	Result  json.RawMessage  `json:"result,omitempty"`
+	Error   *JSONRPCError    `json:"error,omitempty"`
 }
 
 // JSONRPCError represents a JSON-RPC error

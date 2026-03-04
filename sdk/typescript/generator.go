@@ -85,6 +85,11 @@ func (g *Generator) generateTypes(schemas []*parser.CompiledSchema, config sdk.G
 		}
 	}
 
+	// Generate slice-related component/union types before schema interfaces
+	for _, schema := range schemas {
+		buf.WriteString(g.generateSliceSupportTypes(schema, config))
+	}
+
 	// Generate interface for each schema
 	for _, schema := range schemas {
 		// Main type interface
@@ -149,7 +154,7 @@ func (g *Generator) generateInterface(schema *parser.CompiledSchema, config sdk.
 
 	// User-defined fields
 	for _, field := range schema.Fields {
-		tsType := MapFieldTypeWithNullability(&field, config.StrictNullChecks)
+		tsType := g.mapFieldTypeWithNullability(schema, &field, config.StrictNullChecks)
 		optionalMarker := ""
 		if !field.Required && !field.ArrayReq {
 			optionalMarker = "?"
@@ -172,7 +177,7 @@ func (g *Generator) generateCreateInput(schema *parser.CompiledSchema, config sd
 
 	for _, field := range schema.Fields {
 		isOptional := !field.Required && !field.ArrayReq
-		tsType := mapInputFieldType(&field, config.StrictNullChecks, isOptional)
+		tsType := g.mapInputFieldType(schema, &field, config.StrictNullChecks, isOptional)
 		optionalMarker := ""
 		if isOptional {
 			optionalMarker = "?"
@@ -194,7 +199,7 @@ func (g *Generator) generateUpdateInput(schema *parser.CompiledSchema, config sd
 	buf.WriteString(fmt.Sprintf("export interface Update%sInput {\n", typeName))
 
 	for _, field := range schema.Fields {
-		tsType := mapInputFieldType(&field, config.StrictNullChecks, true)
+		tsType := g.mapInputFieldType(schema, &field, config.StrictNullChecks, true)
 		buf.WriteString(fmt.Sprintf("  %s?: %s;\n", field.Name, tsType))
 	}
 
@@ -229,7 +234,7 @@ func (g *Generator) generateFilterType(schema *parser.CompiledSchema, config sdk
 	return buf.String()
 }
 
-func mapInputFieldType(field *parser.CompiledField, strictNullChecks bool, allowNull bool) string {
+func mapInputFieldType(field *parser.CompiledField, strictNullChecks, allowNull bool) string {
 	tsType := MapFieldType(field)
 	if field.IsRelation {
 		if field.Array {
@@ -244,6 +249,100 @@ func mapInputFieldType(field *parser.CompiledField, strictNullChecks bool, allow
 	return tsType
 }
 
+func (g *Generator) mapFieldTypeWithNullability(schema *parser.CompiledSchema, field *parser.CompiledField, strictNullChecks bool) string {
+	if len(field.Slices) == 0 {
+		return MapFieldTypeWithNullability(field, strictNullChecks)
+	}
+
+	baseType := g.sliceUnionTypeName(schema, field) + "[]"
+	if !field.Required && strictNullChecks {
+		return baseType + " | null"
+	}
+
+	return baseType
+}
+
+func (g *Generator) mapInputFieldType(schema *parser.CompiledSchema, field *parser.CompiledField, strictNullChecks, allowNull bool) string {
+	if len(field.Slices) == 0 {
+		return mapInputFieldType(field, strictNullChecks, allowNull)
+	}
+
+	tsType := g.sliceUnionTypeName(schema, field) + "[]"
+	if allowNull && strictNullChecks {
+		tsType += " | null"
+	}
+
+	return tsType
+}
+
+func (g *Generator) generateSliceSupportTypes(schema *parser.CompiledSchema, config sdk.GeneratorConfig) string {
+	var buf bytes.Buffer
+
+	componentByName := make(map[string]*parser.CompiledComponent, len(schema.Components))
+	for i := range schema.Components {
+		component := &schema.Components[i]
+		componentByName[component.Name] = component
+	}
+
+	emittedComponents := map[string]bool{}
+
+	for _, field := range schema.Fields {
+		if len(field.Slices) == 0 {
+			continue
+		}
+
+		for _, slice := range field.Slices {
+			component, ok := componentByName[slice.Schema]
+			if !ok {
+				continue
+			}
+
+			componentTypeName := g.sliceComponentTypeName(schema, slice.Schema)
+			if emittedComponents[componentTypeName] {
+				continue
+			}
+
+			emittedComponents[componentTypeName] = true
+			buf.WriteString(fmt.Sprintf("export interface %s {\n", componentTypeName))
+			for _, componentField := range component.Fields {
+				tsType := MapFieldTypeWithNullability(&componentField, config.StrictNullChecks)
+				optionalMarker := ""
+				if !componentField.Required && !componentField.ArrayReq {
+					optionalMarker = "?"
+				}
+				buf.WriteString(fmt.Sprintf("  %s%s: %s;\n", componentField.Name, optionalMarker, tsType))
+			}
+			buf.WriteString("}\n\n")
+		}
+
+		unionTypeName := g.sliceUnionTypeName(schema, &field)
+		buf.WriteString(fmt.Sprintf("export type %s =\n", unionTypeName))
+		for idx, slice := range field.Slices {
+			separator := " |"
+			if idx == len(field.Slices)-1 {
+				separator = ";"
+			}
+
+			buf.WriteString(fmt.Sprintf("  { type: \"%s\"; data: %s; variation?: string | null }%s\n",
+				slice.Type,
+				g.sliceComponentTypeName(schema, slice.Schema),
+				separator,
+			))
+		}
+		buf.WriteString("\n")
+	}
+
+	return buf.String()
+}
+
+func (g *Generator) sliceUnionTypeName(schema *parser.CompiledSchema, field *parser.CompiledField) string {
+	return ToPascalCase(schema.Name) + ToPascalCase(field.Name) + "Slice"
+}
+
+func (g *Generator) sliceComponentTypeName(schema *parser.CompiledSchema, componentName string) string {
+	return ToPascalCase(schema.Name) + ToPascalCase(componentName)
+}
+
 // generateSchemaAliases creates response type aliases per schema
 func (g *Generator) generateSchemaAliases(schema *parser.CompiledSchema) string {
 	var buf bytes.Buffer
@@ -252,8 +351,8 @@ func (g *Generator) generateSchemaAliases(schema *parser.CompiledSchema) string 
 
 	buf.WriteString(fmt.Sprintf("export type %sDocument = DocumentResponse<%s>;\n", typeName, typeName))
 	buf.WriteString(fmt.Sprintf("export type %sListResponse = DocumentListResponse;\n", typeName))
-	buf.WriteString(fmt.Sprintf("export type %sContentItem = PublicContentItem<%s>;\n", typeName, typeName))
-	buf.WriteString(fmt.Sprintf("export type %sContentListResponse = PublicContentListResponse<%s>;\n", typeName, typeName))
+	buf.WriteString(fmt.Sprintf("export type %sContentItem = ContentItem<%s>;\n", typeName, typeName))
+	buf.WriteString(fmt.Sprintf("export type %sContentListResponse = ContentListResponse<%s>;\n", typeName, typeName))
 
 	return buf.String()
 }
@@ -274,6 +373,7 @@ func (g *Generator) generateClient(schemas []*parser.CompiledSchema, config sdk.
 	data := struct {
 		BaseURL        string
 		WorkspaceID    string
+		ProjectID      string
 		WorkspaceAPIID string
 		TargetAPI      string
 		Schemas        []*parser.CompiledSchema
@@ -281,6 +381,7 @@ func (g *Generator) generateClient(schemas []*parser.CompiledSchema, config sdk.
 	}{
 		BaseURL:        config.BaseURL,
 		WorkspaceID:    config.WorkspaceID,
+		ProjectID:      config.ProjectID,
 		WorkspaceAPIID: config.WorkspaceAPIID,
 		TargetAPI:      config.TargetAPI,
 		Schemas:        schemas,
@@ -343,13 +444,13 @@ export class FluxClient {
 {{- if eq .TargetAPI "content" }}
   private workspaceApiId: string;
 {{- else }}
-  private workspaceId: string;
+  private projectId: string;
 {{- end }}
 
 {{- if eq .TargetAPI "content" }}
   constructor(config: FluxClientConfig, workspaceApiId: string = '{{.WorkspaceAPIID}}') {
 {{- else }}
-  constructor(config: FluxClientConfig, workspaceId: string = '{{.WorkspaceID}}') {
+  constructor(config: FluxClientConfig, projectId: string = '{{.ProjectID}}') {
 {{- end }}
     this.config = {
       baseURL: config.baseURL || '{{.BaseURL}}',
@@ -358,7 +459,7 @@ export class FluxClient {
 {{- if eq .TargetAPI "content" }}
     this.workspaceApiId = workspaceApiId;
 {{- else }}
-    this.workspaceId = workspaceId;
+    this.projectId = projectId;
 {{- end }}
   }
 
@@ -425,7 +526,7 @@ export class FluxClient {
       this.request('GET', ` + "`/api/v1/content/${this.workspaceApiId}/{{.ApiID}}/id/${id}`" + `),
 {{- else }}
     get: (id: string): Promise<{{.Name | pascal}}Document> =>
-      this.request('GET', ` + "`/api/v1/cms/workspaces/${this.workspaceId}/documents/${id}`" + `),
+      this.request('GET', ` + "`/api/v1/cms/projects/${this.projectId}/documents/${id}`" + `),
 
     list: (filter?: {{.Name | pascal}}Filter): Promise<{{.Name | pascal}}ListResponse> => {
       const params = new URLSearchParams();
@@ -434,23 +535,23 @@ export class FluxClient {
       if (filter?.status) params.set('status', filter.status);
       if (filter?.sort) params.set('sort', filter.sort);
       const query = params.toString();
-      return this.request('GET', ` + "`/api/v1/cms/workspaces/${this.workspaceId}/schemas/{{.SchemaID}}/documents${query ? '?' + query : ''}`" + `);
+      return this.request('GET', ` + "`/api/v1/cms/projects/${this.projectId}/schemas/{{.SchemaID}}/documents${query ? '?' + query : ''}`" + `);
     },
 
     create: (data: Create{{.Name | pascal}}Input, options?: { slug?: string; locale?: string; message?: string }): Promise<{{.Name | pascal}}Document> =>
-      this.request('POST', ` + "`/api/v1/cms/workspaces/${this.workspaceId}/schemas/{{.SchemaID}}/documents`" + `, { data, ...options }),
+      this.request('POST', ` + "`/api/v1/cms/projects/${this.projectId}/schemas/{{.SchemaID}}/documents`" + `, { data, ...options }),
 
     update: (id: string, data: Update{{.Name | pascal}}Input, options?: { slug?: string; message?: string }): Promise<{{.Name | pascal}}Document> =>
-      this.request('PUT', ` + "`/api/v1/cms/workspaces/${this.workspaceId}/documents/${id}`" + `, { data, ...options }),
+      this.request('PUT', ` + "`/api/v1/cms/projects/${this.projectId}/documents/${id}`" + `, { data, ...options }),
 
     delete: (id: string): Promise<void> =>
-      this.request('DELETE', ` + "`/api/v1/cms/workspaces/${this.workspaceId}/documents/${id}`" + `),
+      this.request('DELETE', ` + "`/api/v1/cms/projects/${this.projectId}/documents/${id}`" + `),
 
     publish: (id: string): Promise<{{.Name | pascal}}Document> =>
-      this.request('POST', ` + "`/api/v1/cms/workspaces/${this.workspaceId}/documents/${id}/publish`" + `),
+      this.request('POST', ` + "`/api/v1/cms/projects/${this.projectId}/documents/${id}/publish`" + `),
 
     archive: (id: string): Promise<{{.Name | pascal}}Document> =>
-      this.request('POST', ` + "`/api/v1/cms/workspaces/${this.workspaceId}/documents/${id}/archive`" + `),
+      this.request('POST', ` + "`/api/v1/cms/projects/${this.projectId}/documents/${id}/archive`" + `),
 {{- end }}
   };
 {{end}}

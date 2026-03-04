@@ -48,6 +48,7 @@ brews:
   - repository:
       owner: infrasutra
       name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
     name: fsl
     homepage: https://github.com/infrasutra/fsl
     description: "Flux Schema Language toolkit — parser, LSP, and SDK codegen"

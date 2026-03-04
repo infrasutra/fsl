@@ -41,10 +41,10 @@ type Decorator struct {
 
 // RelationInfo holds parsed relation decorator details
 type RelationInfo struct {
-	TargetType  string `json:"targetType"`            // The type being referenced
-	Inverse     string `json:"inverse,omitempty"`     // Inverse field name for bidirectional relations
-	OnDelete    string `json:"onDelete,omitempty"`    // Cascade behavior: "cascade", "restrict", "setNull"
-	IsSelfRef   bool   `json:"isSelfRef,omitempty"`   // True if relation points to same type
+	TargetType string `json:"targetType"`          // The type being referenced
+	Inverse    string `json:"inverse,omitempty"`   // Inverse field name for bidirectional relations
+	OnDelete   string `json:"onDelete,omitempty"`  // Cascade behavior: "cascade", "restrict", "setNull"
+	IsSelfRef  bool   `json:"isSelfRef,omitempty"` // True if relation points to same type
 }
 
 // RichTextConfig holds parsed RichText decorator configuration

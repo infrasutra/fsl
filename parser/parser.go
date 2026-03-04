@@ -377,15 +377,6 @@ func (p *Parser) decoratorArgsToValue(args []any) any {
 		return true // Decorator with no args is like a flag
 	}
 	if len(args) == 1 {
-		// Check if it's a map (named arg)
-		if m, ok := args[0].(map[string]any); ok {
-			// Flatten single-key map
-			if len(m) == 1 {
-				for _, v := range m {
-					return v
-				}
-			}
-		}
 		return args[0]
 	}
 	// Multiple args - merge maps or return array

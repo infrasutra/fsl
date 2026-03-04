@@ -121,6 +121,13 @@ var fieldDecorators = []CompletionItem{
 		InsertTextFormat: InsertTextFormatSnippet,
 	},
 	{
+		Label:            "@slices",
+		Kind:             CompletionKindProperty,
+		Detail:           "Typed slice-zone mappings for JSON",
+		InsertText:       "@slices(${1:hero}: ${2:HeroSlice})",
+		InsertTextFormat: InsertTextFormatSnippet,
+	},
+	{
 		Label:            "@maxSize",
 		Kind:             CompletionKindProperty,
 		Detail:           "Maximum file size in bytes",

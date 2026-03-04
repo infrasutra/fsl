@@ -15,7 +15,7 @@ var TypeMapping = map[string]string{
 	parser.TypeRichText: "RichTextBlock[]",
 	parser.TypeImage:    "ImageAsset",
 	parser.TypeFile:     "FileAsset",
-	"Enum":           "string", // Inline enums become union types
+	"Enum":              "string", // Inline enums become union types
 }
 
 // MapFieldType converts an FSL field to its TypeScript type
@@ -141,15 +141,18 @@ export interface ApiListResponse<T> {
 }
 
 export interface SchemaRef {
-  id: string;
+  id?: string;
   api_id: string;
   name: string;
 }
 
 export interface PaginationInfo {
   total: number;
+  page: number;
   limit: number;
-  offset: number;
+  total_pages: number;
+  has_next: boolean;
+  has_previous: boolean;
 }
 
 export interface UserRef {
@@ -191,21 +194,7 @@ export interface DocumentListResponse {
   pagination: PaginationInfo;
 }
 
-export interface PublicSchemaRef {
-  api_id: string;
-  name: string;
-}
-
-export interface PublicPaginationInfo {
-  total: number;
-  page: number;
-  per_page: number;
-  total_pages: number;
-  has_next: boolean;
-  has_previous: boolean;
-}
-
-export interface PublicContentItem<T> {
+export interface ContentItem<T> {
   id: string;
   slug?: string;
   locale: string;
@@ -213,13 +202,13 @@ export interface PublicContentItem<T> {
   created_at: string;
   updated_at: string;
   published_at: string;
-  schema: PublicSchemaRef;
+  schema: SchemaRef;
 }
 
-export interface PublicContentListResponse<T> {
-  data: PublicContentItem<T>[];
-  pagination: PublicPaginationInfo;
-  schema: PublicSchemaRef;
+export interface ContentListResponse<T> {
+  data: ContentItem<T>[];
+  pagination: PaginationInfo;
+  schema: SchemaRef;
 }
 `
 }

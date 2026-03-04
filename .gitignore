@@ -5,6 +5,9 @@ fsl
 # Build artifacts
 dist/
 
+# Local automation state
+.omc/
+
 # IDE
 .idea/
 .vscode/
@@ -18,3 +21,4 @@ Thumbs.db
 # Test
 coverage.out
 *.test
+*.out

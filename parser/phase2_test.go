@@ -303,11 +303,38 @@ func TestParse_NewDecorators(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "minItems zero is allowed",
+			source: `
+				type Article {
+					tags: [String] @minItems(0)
+				}
+			`,
+			wantErr: false,
+		},
+		{
 			name: "hidden decorator",
 			source: `
 				type User {
 					name: String!
 					passwordHash: String! @hidden
+				}
+			`,
+			wantErr: false,
+		},
+		{
+			name: "slices decorator for JSON",
+			source: `
+				type Page {
+					title: String!
+					slices: JSON! @slices(hero: HeroSlice, faq: FaqSlice)
+				}
+
+				type HeroSlice {
+					heading: String!
+				}
+
+				type FaqSlice {
+					items: JSON!
 				}
 			`,
 			wantErr: false,
@@ -558,6 +585,484 @@ func TestValidateData_RichText(t *testing.T) {
 	}
 }
 
+func TestValidateData_Slices(t *testing.T) {
+	source := `
+		type Page {
+			title: String!
+			slices: JSON! @slices(hero: HeroSlice, cta: CtaSlice)
+		}
+
+		type HeroSlice {
+			heading: String!
+			subheading: Text
+		}
+
+		type CtaSlice {
+			label: String!
+			url: String!
+		}
+	`
+
+	compiled, err := ParseAndCompile(source, "Page", "page", false)
+	if err != nil {
+		t.Fatalf("ParseAndCompile() error = %v", err)
+	}
+
+	tests := []struct {
+		name             string
+		data             map[string]any
+		wantErrorCount   int
+		wantErrorField   string
+		wantErrorMessage string
+	}{
+		{
+			name: "valid slices payload",
+			data: map[string]any{
+				"title": "Landing",
+				"slices": []any{
+					map[string]any{
+						"type": "hero",
+						"data": map[string]any{
+							"heading":    "Welcome",
+							"subheading": "Build fast",
+						},
+					},
+					map[string]any{
+						"type": "cta",
+						"data": map[string]any{
+							"label": "Get started",
+							"url":   "/signup",
+						},
+					},
+				},
+			},
+			wantErrorCount: 0,
+		},
+		{
+			name: "slices must be array",
+			data: map[string]any{
+				"title":  "Landing",
+				"slices": map[string]any{"type": "hero"},
+			},
+			wantErrorCount:   1,
+			wantErrorField:   "slices",
+			wantErrorMessage: "slice zone must be an array",
+		},
+		{
+			name: "unknown slice type",
+			data: map[string]any{
+				"title": "Landing",
+				"slices": []any{
+					map[string]any{
+						"type": "gallery",
+						"data": map[string]any{},
+					},
+				},
+			},
+			wantErrorCount:   1,
+			wantErrorField:   "slices[0].type",
+			wantErrorMessage: "unknown slice type",
+		},
+		{
+			name: "slice data is required",
+			data: map[string]any{
+				"title": "Landing",
+				"slices": []any{
+					map[string]any{
+						"type": "hero",
+					},
+				},
+			},
+			wantErrorCount:   1,
+			wantErrorField:   "slices[0].data",
+			wantErrorMessage: "must include a 'data' object",
+		},
+		{
+			name: "component required field validation",
+			data: map[string]any{
+				"title": "Landing",
+				"slices": []any{
+					map[string]any{
+						"type": "hero",
+						"data": map[string]any{},
+					},
+				},
+			},
+			wantErrorCount:   1,
+			wantErrorField:   "slices[0].data.heading",
+			wantErrorMessage: "field is required",
+		},
+		{
+			name: "component unexpected field validation",
+			data: map[string]any{
+				"title": "Landing",
+				"slices": []any{
+					map[string]any{
+						"type": "hero",
+						"data": map[string]any{
+							"heading": "Welcome",
+							"extra":   true,
+						},
+					},
+				},
+			},
+			wantErrorCount:   1,
+			wantErrorField:   "slices[0].data.extra",
+			wantErrorMessage: "unexpected field",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			errors := ValidateData(tt.data, compiled)
+			if len(errors) != tt.wantErrorCount {
+				t.Errorf("ValidateData() got %d errors, want %d", len(errors), tt.wantErrorCount)
+				for _, e := range errors {
+					t.Logf("  - %s: %s", e.Field, e.Message)
+				}
+			}
+
+			if tt.wantErrorCount == 0 {
+				return
+			}
+
+			if len(errors) == 0 {
+				t.Fatalf("expected at least one error")
+			}
+
+			if tt.wantErrorField != "" && errors[0].Field != tt.wantErrorField {
+				t.Errorf("first error field = %s, want %s", errors[0].Field, tt.wantErrorField)
+			}
+
+			if tt.wantErrorMessage != "" && !contains(errors[0].Message, tt.wantErrorMessage) {
+				t.Errorf("first error message = %q, want to contain %q", errors[0].Message, tt.wantErrorMessage)
+			}
+		})
+	}
+}
+
+func TestCompile_SlicesMetadata(t *testing.T) {
+	source := `
+		type Page {
+			title: String!
+			slices: JSON! @slices(hero: HeroSlice, cta: CtaSlice)
+		}
+
+		type HeroSlice {
+			heading: String!
+		}
+
+		type CtaSlice {
+			label: String!
+			url: String!
+		}
+
+		type UnusedSlice {
+			ignored: String
+		}
+	`
+
+	compiled, err := ParseAndCompile(source, "Page", "page", false)
+	if err != nil {
+		t.Fatalf("ParseAndCompile() error = %v", err)
+	}
+
+	var slicesField *CompiledField
+	for i := range compiled.Fields {
+		if compiled.Fields[i].Name == "slices" {
+			slicesField = &compiled.Fields[i]
+			break
+		}
+	}
+
+	if slicesField == nil {
+		t.Fatal("expected 'slices' field")
+	}
+
+	if len(slicesField.Slices) != 2 {
+		t.Fatalf("expected 2 slice mappings, got %d", len(slicesField.Slices))
+	}
+
+	if slicesField.Slices[0].Type != "cta" || slicesField.Slices[0].Schema != "CtaSlice" {
+		t.Errorf("unexpected first slice mapping: %+v", slicesField.Slices[0])
+	}
+
+	if slicesField.Slices[1].Type != "hero" || slicesField.Slices[1].Schema != "HeroSlice" {
+		t.Errorf("unexpected second slice mapping: %+v", slicesField.Slices[1])
+	}
+
+	if len(compiled.Components) != 2 {
+		t.Fatalf("expected 2 compiled components, got %d", len(compiled.Components))
+	}
+
+	if compiled.Components[0].Name != "CtaSlice" {
+		t.Errorf("expected first component CtaSlice, got %s", compiled.Components[0].Name)
+	}
+
+	if compiled.Components[1].Name != "HeroSlice" {
+		t.Errorf("expected second component HeroSlice, got %s", compiled.Components[1].Name)
+	}
+}
+
+func TestCompile_SlicesMetadata_TransitiveComponents(t *testing.T) {
+	source := `
+		type Page {
+			title: String!
+			slices: JSON! @slices(hero: HeroSlice)
+		}
+
+		type HeroSlice {
+			heading: String!
+			nested: JSON @slices(cta: CtaSlice)
+		}
+
+		type CtaSlice {
+			label: String!
+			href: String!
+		}
+	`
+
+	compiled, err := ParseAndCompile(source, "Page", "page", false)
+	if err != nil {
+		t.Fatalf("ParseAndCompile() error = %v", err)
+	}
+
+	if len(compiled.Components) != 2 {
+		t.Fatalf("expected 2 compiled components, got %d", len(compiled.Components))
+	}
+
+	componentByName := make(map[string]*CompiledComponent, len(compiled.Components))
+	for i := range compiled.Components {
+		componentByName[compiled.Components[i].Name] = &compiled.Components[i]
+	}
+
+	if _, ok := componentByName["HeroSlice"]; !ok {
+		t.Fatal("expected HeroSlice to be compiled")
+	}
+
+	if _, ok := componentByName["CtaSlice"]; !ok {
+		t.Fatal("expected transitive CtaSlice to be compiled")
+	}
+
+	hero := componentByName["HeroSlice"]
+	var nestedField *CompiledField
+	for i := range hero.Fields {
+		if hero.Fields[i].Name == "nested" {
+			nestedField = &hero.Fields[i]
+			break
+		}
+	}
+
+	if nestedField == nil {
+		t.Fatal("expected HeroSlice.nested field")
+	}
+
+	if len(nestedField.Slices) != 1 {
+		t.Fatalf("expected HeroSlice.nested to have 1 slice mapping, got %d", len(nestedField.Slices))
+	}
+
+	if nestedField.Slices[0].Type != "cta" || nestedField.Slices[0].Schema != "CtaSlice" {
+		t.Fatalf("unexpected nested slice mapping: %+v", nestedField.Slices[0])
+	}
+
+	errors := ValidateData(map[string]any{
+		"title": "Landing",
+		"slices": []any{
+			map[string]any{
+				"type": "hero",
+				"data": map[string]any{
+					"heading": "Welcome",
+					"nested": []any{
+						map[string]any{
+							"type": "cta",
+							"data": map[string]any{
+								"label": "Start",
+								"href":  "/start",
+							},
+						},
+					},
+				},
+			},
+		},
+	}, compiled)
+
+	if len(errors) > 0 {
+		t.Fatalf("expected no validation errors for nested slices, got %v", errors)
+	}
+}
+
+func TestCompile_SlicesMetadata_Cycle(t *testing.T) {
+	source := `
+		type Page {
+			slices: JSON! @slices(a: ASlice)
+		}
+
+		type ASlice {
+			nested: JSON @slices(b: BSlice)
+		}
+
+		type BSlice {
+			nested: JSON @slices(a: ASlice)
+		}
+	`
+
+	compiled, err := ParseAndCompile(source, "Page", "page", false)
+	if err != nil {
+		t.Fatalf("ParseAndCompile() error = %v", err)
+	}
+
+	if len(compiled.Components) != 2 {
+		t.Fatalf("expected 2 compiled components for cyclic mapping, got %d", len(compiled.Components))
+	}
+
+	names := map[string]bool{}
+	for _, component := range compiled.Components {
+		names[component.Name] = true
+	}
+
+	if !names["ASlice"] || !names["BSlice"] {
+		t.Fatalf("expected cyclic components ASlice and BSlice, got %+v", names)
+	}
+}
+
+func TestCompile_SingleSliceMapping(t *testing.T) {
+	source := `
+		type Page {
+			slices: JSON! @slices(hero: HeroSlice)
+		}
+
+		type HeroSlice {
+			heading: String!
+		}
+	`
+
+	compiled, err := ParseAndCompile(source, "Page", "page", false)
+	if err != nil {
+		t.Fatalf("ParseAndCompile() error = %v", err)
+	}
+
+	var slicesField *CompiledField
+	for i := range compiled.Fields {
+		if compiled.Fields[i].Name == "slices" {
+			slicesField = &compiled.Fields[i]
+			break
+		}
+	}
+
+	if slicesField == nil {
+		t.Fatal("expected 'slices' field")
+	}
+
+	if len(slicesField.Slices) != 1 {
+		t.Fatalf("expected single slice mapping, got %d", len(slicesField.Slices))
+	}
+
+	if slicesField.Slices[0].Type != "hero" || slicesField.Slices[0].Schema != "HeroSlice" {
+		t.Errorf("unexpected mapping: %+v", slicesField.Slices[0])
+	}
+}
+
+func TestParse_SlicesDecoratorValidation(t *testing.T) {
+	tests := []struct {
+		name           string
+		source         string
+		wantErrContain string
+	}{
+		{
+			name: "slices only valid on json",
+			source: `
+				type Page {
+					slices: String! @slices(hero: HeroSlice)
+				}
+
+				type HeroSlice {
+					heading: String!
+				}
+			`,
+			wantErrContain: "@slices can only be used with JSON type",
+		},
+		{
+			name: "slices cannot be used on array fields",
+			source: `
+				type Page {
+					slices: [JSON!]! @slices(hero: HeroSlice)
+				}
+
+				type HeroSlice {
+					heading: String!
+				}
+			`,
+			wantErrContain: "@slices cannot be used on array fields",
+		},
+		{
+			name: "slices requires non-empty map",
+			source: `
+				type Page {
+					slices: JSON! @slices()
+				}
+			`,
+			wantErrContain: "@slices must define named slice mappings",
+		},
+		{
+			name: "slice key must be snake case",
+			source: `
+				type Page {
+					slices: JSON! @slices(Hero: HeroSlice)
+				}
+
+				type HeroSlice {
+					heading: String!
+				}
+			`,
+			wantErrContain: "invalid slice type 'Hero'",
+		},
+		{
+			name: "slice cannot target builtin",
+			source: `
+				type Page {
+					slices: JSON! @slices(hero: String)
+				}
+			`,
+			wantErrContain: "cannot reference builtin type",
+		},
+		{
+			name: "slice cannot target enum",
+			source: `
+				enum SliceKind {
+					hero
+				}
+
+				type Page {
+					slices: JSON! @slices(hero: SliceKind)
+				}
+			`,
+			wantErrContain: "cannot reference enum",
+		},
+		{
+			name: "slice target type must exist",
+			source: `
+				type Page {
+					slices: JSON! @slices(hero: HeroSlice)
+				}
+			`,
+			wantErrContain: "references unknown type",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Parse(tt.source)
+			if err == nil {
+				t.Fatalf("expected Parse() error")
+			}
+
+			if !contains(err.Error(), tt.wantErrContain) {
+				t.Fatalf("Parse() error = %q, want to contain %q", err.Error(), tt.wantErrContain)
+			}
+		})
+	}
+}
+
 func TestValidateData_Image(t *testing.T) {
 	source := `
 		type Article {
@@ -685,6 +1190,32 @@ func TestValidateData_ArrayConstraints(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestValidateData_ArrayConstraints_MinItemsZeroAllowed(t *testing.T) {
+	source := `
+		type Article {
+			title: String!
+			tags: [String] @minItems(0) @maxItems(5)
+		}
+	`
+
+	compiled, err := ParseAndCompile(source, "Article", "article", false)
+	if err != nil {
+		t.Fatalf("ParseAndCompile() error = %v", err)
+	}
+
+	errors := ValidateData(map[string]any{
+		"title": "Hello",
+		"tags":  []any{},
+	}, compiled)
+
+	if len(errors) != 0 {
+		t.Errorf("ValidateData() got %d errors, want 0", len(errors))
+		for _, e := range errors {
+			t.Logf("  - %s: %s", e.Field, e.Message)
+		}
 	}
 }
 

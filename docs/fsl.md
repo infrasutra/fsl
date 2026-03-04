@@ -1,6 +1,6 @@
 # Flux Schema Language (FSL) Reference
 
-Authoritative reference for the FSL parser/compiler used by Flux CMS backend (`pkg/fsl`).
+Authoritative reference for the FSL parser/compiler and associated tooling.
 
 ## Quick Start
 
@@ -11,11 +11,28 @@ type Article {
   title: String! @minLength(1) @maxLength(200) @searchable
   slug: String! @pattern("^[a-z0-9-]+$") @unique @index
   body: RichText @blocks("paragraph", "heading", "list", "image")
+  slices: JSON! @slices(hero: HeroSlice, faq: FaqSlice, cta: CtaSlice)
   publishedAt: DateTime @index
   category: Category! @relation(inverse: "articles", onDelete: "restrict")
   tags: [String!]! @minItems(1) @maxItems(10)
   heroImage: Image @formats("jpg", "png", "webp") @maxSize(5000000)
   seo: JSON
+}
+
+type HeroSlice {
+  heading: String!
+  subheading: Text
+  image: Image
+}
+
+type FaqSlice {
+  title: String!
+  items: JSON!
+}
+
+type CtaSlice {
+  label: String!
+  href: String!
 }
 
 type Category {
@@ -204,6 +221,18 @@ For `File`, formats can include image + document/archive/media formats:
 - `txt`, `csv`, `json`, `xml`
 - `mp3`, `mp4`, `wav`, `avi`, `mov`
 
+### JSON
+
+- `@slices(sliceType: ComponentType, ...)`
+
+Rules:
+
+- only valid on non-array `JSON` fields
+- requires named mappings (`hero: HeroSlice`) instead of positional args
+- mapped target must be another `type` in the same FSL document
+- runtime slice items are validated as `{ type: string, data: object }`
+- `variation` is optional/free-form and not validated
+
 ### General Flags
 
 - `@hidden`
@@ -268,6 +297,34 @@ Examples:
 { "id": "550e8400-e29b-41d4-a716-446655440000" }
 ```
 
+### Slice Zone Value (`@slices`)
+
+Must be an array of slice objects. Each item must include:
+
+- `type`: one of the allowed mapping keys from `@slices(...)`
+- `data`: object validated against the mapped component type fields
+
+Example:
+
+```json
+[
+  {
+    "type": "hero",
+    "data": {
+      "heading": "Welcome to Flux",
+      "subheading": "Composable page content"
+    }
+  },
+  {
+    "type": "faq",
+    "data": {
+      "title": "Common questions",
+      "items": []
+    }
+  }
+]
+```
+
 ## Current Limitations and Gotchas
 
 - Decorator array literal syntax is **not** supported by backend parser.
@@ -293,7 +350,7 @@ Examples:
 
 Validate FSL and get diagnostics (line/column/source):
 
-- `POST /api/v1/cms/workspaces/{workspace_id}/schemas/validate`
+- `POST /api/v1/projects/{project_id}/schemas/validate`
 - Body:
 
 ```json

@@ -191,7 +191,7 @@ func WriteFile(t *TemplateFile, path, format string) error {
 		return err
 	}
 
-	return os.WriteFile(path, []byte(content), 0644)
+	return os.WriteFile(path, []byte(content), 0o644)
 }
 
 // GenerateSlug creates a URL-friendly slug from a name

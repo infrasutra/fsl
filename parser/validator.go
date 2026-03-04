@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -21,11 +22,11 @@ type Validator struct {
 	schema        *Schema
 	errors        []ValidationError
 	typeNames     map[string]bool
-	enumNames     map[string]bool              // Named enum definitions
-	enumValues    map[string]map[string]bool   // enumName -> value -> exists
-	fieldNames    map[string]map[string]bool   // typeName -> fieldName -> exists
-	relations     map[string][]string          // typeName -> list of relation field names
-	externalTypes map[string]bool              // External types that should be treated as valid (for templates)
+	enumNames     map[string]bool            // Named enum definitions
+	enumValues    map[string]map[string]bool // enumName -> value -> exists
+	fieldNames    map[string]map[string]bool // typeName -> fieldName -> exists
+	relations     map[string][]string        // typeName -> list of relation field names
+	externalTypes map[string]bool            // External types that should be treated as valid (for templates)
 }
 
 func NewValidator(schema *Schema) *Validator {
@@ -248,6 +249,16 @@ func (v *Validator) validateDecorator(fieldPath, fieldType string, field *FieldD
 		}
 		v.validateBlocksDecorator(fieldPath, decoratorValue)
 
+	case DecSlices:
+		// Only valid for JSON and only on non-array fields
+		if fieldType != TypeJSON {
+			v.addError(fieldPath, "@slices can only be used with JSON type")
+		}
+		if field.Array {
+			v.addError(fieldPath, "@slices cannot be used on array fields")
+		}
+		v.validateSlicesDecorator(fieldPath, decoratorValue)
+
 	case DecMaxSize:
 		// Only valid for Image and File
 		if fieldType != TypeImage && fieldType != TypeFile {
@@ -273,13 +284,22 @@ func (v *Validator) validateDecorator(fieldPath, fieldType string, field *FieldD
 			v.addError(fieldPath, "@precision value must be a positive integer")
 		}
 
-	case DecMinItems, DecMaxItems:
+	case DecMinItems:
+		// Only valid for array fields
+		if !field.Array {
+			v.addError(fieldPath, fmt.Sprintf("@%s can only be used with array types", decoratorName))
+		}
+		if !v.isNonNegativeInt(decoratorValue) {
+			v.addError(fieldPath, "@minItems value must be a non-negative integer")
+		}
+
+	case DecMaxItems:
 		// Only valid for array fields
 		if !field.Array {
 			v.addError(fieldPath, fmt.Sprintf("@%s can only be used with array types", decoratorName))
 		}
 		if !v.isPositiveInt(decoratorValue) {
-			v.addError(fieldPath, fmt.Sprintf("@%s value must be a positive integer", decoratorName))
+			v.addError(fieldPath, "@maxItems value must be a positive integer")
 		}
 
 	default:
@@ -337,6 +357,42 @@ func (v *Validator) validateBlocksDecorator(fieldPath string, decoratorValue any
 		}
 	default:
 		v.addError(fieldPath, "@blocks must be a string or array of strings")
+	}
+}
+
+var sliceTypePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
+
+func (v *Validator) validateSlicesDecorator(fieldPath string, decoratorValue any) {
+	sliceMap, ok := decoratorValue.(map[string]any)
+	if !ok || len(sliceMap) == 0 {
+		v.addError(fieldPath, "@slices must define named slice mappings, e.g. @slices(hero: HeroSlice, faq: FaqSlice)")
+		return
+	}
+
+	for sliceType, targetAny := range sliceMap {
+		if !sliceTypePattern.MatchString(sliceType) {
+			v.addError(fieldPath, fmt.Sprintf("invalid slice type '%s': must be snake_case and start with a lowercase letter", sliceType))
+		}
+
+		targetType, ok := targetAny.(string)
+		if !ok || strings.TrimSpace(targetType) == "" {
+			v.addError(fieldPath, fmt.Sprintf("slice '%s' must reference a type name", sliceType))
+			continue
+		}
+
+		if BuiltinTypes[targetType] {
+			v.addError(fieldPath, fmt.Sprintf("slice '%s' cannot reference builtin type '%s'", sliceType, targetType))
+			continue
+		}
+
+		if v.enumNames[targetType] {
+			v.addError(fieldPath, fmt.Sprintf("slice '%s' cannot reference enum '%s'", sliceType, targetType))
+			continue
+		}
+
+		if !v.typeNames[targetType] {
+			v.addError(fieldPath, fmt.Sprintf("slice '%s' references unknown type '%s'", sliceType, targetType))
+		}
 	}
 }
 
@@ -458,6 +514,17 @@ func (v *Validator) isPositiveInt(value any) bool {
 		return val > 0
 	case float64:
 		return val > 0 && val == float64(int64(val))
+	default:
+		return false
+	}
+}
+
+func (v *Validator) isNonNegativeInt(value any) bool {
+	switch val := value.(type) {
+	case int64:
+		return val >= 0
+	case float64:
+		return val >= 0 && val == float64(int64(val))
 	default:
 		return false
 	}
