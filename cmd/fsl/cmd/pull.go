@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -52,27 +51,14 @@ func runPull(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	_, body, err := client.apiRequest("GET", "/api/v1/schemas", nil)
+	body, err := client.apiRequest("GET", "/api/v1/schemas", nil)
 	if err != nil {
 		return fmt.Errorf("failed to fetch schemas: %w", err)
 	}
 
-	// The server may return a top-level array or a wrapper object.
-	var schemas []schemaListItem
-	if err := json.Unmarshal(body, &schemas); err != nil {
-		// Try wrapped format: { "schemas": [...] } or { "data": [...] }
-		var wrapper struct {
-			Schemas []schemaListItem `json:"schemas"`
-			Data    []schemaListItem `json:"data"`
-		}
-		if err2 := json.Unmarshal(body, &wrapper); err2 != nil {
-			return fmt.Errorf("failed to parse server response: %w", err)
-		}
-		if len(wrapper.Schemas) > 0 {
-			schemas = wrapper.Schemas
-		} else {
-			schemas = wrapper.Data
-		}
+	schemas, err := unmarshalListResponse[schemaListItem](body, "schemas", "data")
+	if err != nil {
+		return err
 	}
 
 	if len(schemas) == 0 {

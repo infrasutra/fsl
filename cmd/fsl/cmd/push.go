@@ -146,7 +146,7 @@ func runPush(cmd *cobra.Command, args []string) error {
 			Content: entry.content,
 		}
 
-		_, respBody, err := client.apiRequest("POST", "/api/v1/schemas/sync", payload)
+		respBody, err := client.apiRequest("POST", "/api/v1/schemas/sync", payload)
 		if err != nil {
 			fmt.Printf("\033[31m✗\033[0m %s — push failed: %v\n", entry.path, err)
 			failed++

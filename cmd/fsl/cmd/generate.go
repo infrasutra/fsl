@@ -74,12 +74,18 @@ func init() {
 	generatePythonCmd.Flags().StringVar(&generateWorkspaceAPIID, "workspace-api-id", "", "Workspace API ID for content SDK default")
 }
 
-func runGenerateTypescript(cmd *cobra.Command, args []string) error {
-	if generateClient != "fetch" {
-		return fmt.Errorf("only fetch client is supported right now")
-	}
+// generateParams holds the configuration for the shared generate logic.
+type generateParams struct {
+	language      string        // "TypeScript" or "Python"
+	outputDefault string        // default output directory
+	outputConfig  string        // output directory from config
+	generator     sdk.Generator // the language-specific generator
+	genConfig     sdk.GeneratorConfig
+}
 
-	target := generateTarget
+// runGenerate contains the shared logic for SDK generation.
+func runGenerate(params generateParams) error {
+	target := params.genConfig.TargetAPI
 	switch target {
 	case "content":
 		// valid
@@ -89,7 +95,6 @@ func runGenerateTypescript(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid target %q: must be content or cms", target)
 	}
 
-	// Determine schema path
 	schemaPath := generateSchemaPath
 	if schemaPath == "" {
 		if cfg := GetConfig(); cfg != nil && cfg.Schemas.Directory != "" {
@@ -99,17 +104,91 @@ func runGenerateTypescript(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Determine output path
 	outputPath := generateOutputPath
 	if outputPath == "" {
-		if cfg := GetConfig(); cfg != nil && cfg.Output.TypeScript.Directory != "" {
-			outputPath = cfg.Output.TypeScript.Directory
+		if params.outputConfig != "" {
+			outputPath = params.outputConfig
 		} else {
-			outputPath = "./sdk"
+			outputPath = params.outputDefault
 		}
 	}
 
-	// Determine client type
+	files, err := collectFSLFiles([]string{schemaPath})
+	if err != nil {
+		return err
+	}
+
+	compiledSchemas := make([]*parser.CompiledSchema, 0)
+	for _, file := range files {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			return fmt.Errorf("cannot read %s: %w", file, err)
+		}
+
+		result := parser.ParseWithDiagnostics(string(content))
+		if !result.Valid {
+			message := "unknown error"
+			if len(result.Diagnostics) > 0 {
+				message = result.Diagnostics[0].Message
+			}
+			return fmt.Errorf("schema validation failed in %s: %s", file, message)
+		}
+
+		for _, typeDef := range result.Schema.Types {
+			derived := deriveApiID(typeDef.Name)
+			compiled, err := parser.Compile(result.Schema, typeDef.Name, derived, false)
+			if err != nil {
+				return fmt.Errorf("failed to compile schema %s in %s: %w", typeDef.Name, file, err)
+			}
+			compiled.ApiID = derived
+			compiledSchemas = append(compiledSchemas, compiled)
+		}
+	}
+
+	if err := os.MkdirAll(outputPath, 0o755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
+	}
+
+	baseURL := ""
+	if cfg := GetConfig(); cfg != nil && cfg.Workspace.APIURL != "" {
+		baseURL = cfg.Workspace.APIURL
+	}
+	params.genConfig.BaseURL = baseURL
+	params.genConfig.WorkspaceAPIID = generateWorkspaceAPIID
+	params.genConfig.IncludeClient = true
+
+	generated, err := params.generator.Generate(compiledSchemas, params.genConfig)
+	if err != nil {
+		return fmt.Errorf("failed to generate %s SDK: %w", params.language, err)
+	}
+
+	fileNames := make([]string, 0, len(generated.Files))
+	for name := range generated.Files {
+		fileNames = append(fileNames, name)
+	}
+	sort.Strings(fileNames)
+
+	for _, name := range fileNames {
+		content := generated.Files[name]
+		filePath := filepath.Join(outputPath, name)
+		if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
+			return fmt.Errorf("failed to write %s: %w", name, err)
+		}
+	}
+
+	fmt.Printf("\033[32m✓\033[0m Generated %s SDK in %s\n", params.language, outputPath)
+	fmt.Printf("  - schemas: %d\n", len(compiledSchemas))
+	fmt.Printf("  - files (%d): %s\n", len(fileNames), strings.Join(fileNames, ", "))
+
+	return nil
+}
+
+func runGenerateTypescript(cmd *cobra.Command, args []string) error {
+	if generateClient != "fetch" {
+		return fmt.Errorf("only fetch client is supported right now")
+	}
+
+	// Determine client type from config
 	client := generateClient
 	if cfg := GetConfig(); cfg != nil && cfg.Output.TypeScript.Client != "" && generateClient == "fetch" {
 		client = cfg.Output.TypeScript.Client
@@ -118,182 +197,38 @@ func runGenerateTypescript(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("only fetch client is supported right now")
 	}
 
-	files, err := collectFSLFiles([]string{schemaPath})
-	if err != nil {
-		return err
+	var outputConfig string
+	if cfg := GetConfig(); cfg != nil && cfg.Output.TypeScript.Directory != "" {
+		outputConfig = cfg.Output.TypeScript.Directory
 	}
 
-	// Parse and compile all schemas
-	compiledSchemas := make([]*parser.CompiledSchema, 0)
-	for _, file := range files {
-		content, err := os.ReadFile(file)
-		if err != nil {
-			return fmt.Errorf("cannot read %s: %w", file, err)
-		}
-
-		result := parser.ParseWithDiagnostics(string(content))
-		if !result.Valid {
-			message := "unknown error"
-			if len(result.Diagnostics) > 0 {
-				message = result.Diagnostics[0].Message
-			}
-			return fmt.Errorf("schema validation failed in %s: %s", file, message)
-		}
-
-		for _, typeDef := range result.Schema.Types {
-			derived := deriveApiID(typeDef.Name)
-			compiled, err := parser.Compile(result.Schema, typeDef.Name, derived, false)
-			if err != nil {
-				return fmt.Errorf("failed to compile schema %s in %s: %w", typeDef.Name, file, err)
-			}
-			compiled.ApiID = derived
-			compiledSchemas = append(compiledSchemas, compiled)
-		}
-	}
-
-	// Create output directory
-	if err := os.MkdirAll(outputPath, 0o755); err != nil {
-		return fmt.Errorf("failed to create output directory: %w", err)
-	}
-
-	baseURL := ""
-	if cfg := GetConfig(); cfg != nil && cfg.Workspace.APIURL != "" {
-		baseURL = cfg.Workspace.APIURL
-	}
-
-	generator := typescript.New()
-	generated, err := generator.Generate(compiledSchemas, sdk.GeneratorConfig{
-		BaseURL:          baseURL,
-		WorkspaceAPIID:   generateWorkspaceAPIID,
-		IncludeClient:    true,
-		StrictNullChecks: true,
-		TargetAPI:        target,
+	return runGenerate(generateParams{
+		language:      "TypeScript",
+		outputDefault: "./sdk",
+		outputConfig:  outputConfig,
+		generator:     typescript.New(),
+		genConfig: sdk.GeneratorConfig{
+			StrictNullChecks: true,
+			TargetAPI:        generateTarget,
+		},
 	})
-	if err != nil {
-		return fmt.Errorf("failed to generate TypeScript SDK: %w", err)
-	}
-
-	fileNames := make([]string, 0, len(generated.Files))
-	for name := range generated.Files {
-		fileNames = append(fileNames, name)
-	}
-	sort.Strings(fileNames)
-
-	for _, name := range fileNames {
-		content := generated.Files[name]
-		filePath := filepath.Join(outputPath, name)
-		if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
-			return fmt.Errorf("failed to write %s: %w", name, err)
-		}
-	}
-
-	fmt.Printf("\033[32m✓\033[0m Generated TypeScript SDK in %s\n", outputPath)
-	fmt.Printf("  - schemas: %d\n", len(compiledSchemas))
-	fmt.Printf("  - files (%d): %s\n", len(fileNames), strings.Join(fileNames, ", "))
-
-	return nil
 }
 
 func runGeneratePython(cmd *cobra.Command, args []string) error {
-	target := generateTarget
-	switch target {
-	case "content":
-		// valid
-	case "cms":
-		return fmt.Errorf("CMS SDK generation requires schema IDs and should be generated via the server SDK endpoint")
-	default:
-		return fmt.Errorf("invalid target %q: must be content or cms", target)
+	var outputConfig string
+	if cfg := GetConfig(); cfg != nil && cfg.Output.Python.Directory != "" {
+		outputConfig = cfg.Output.Python.Directory
 	}
 
-	schemaPath := generateSchemaPath
-	if schemaPath == "" {
-		if cfg := GetConfig(); cfg != nil && cfg.Schemas.Directory != "" {
-			schemaPath = cfg.Schemas.Directory
-		} else {
-			schemaPath = GetSchemaDirectory()
-		}
-	}
-
-	outputPath := generateOutputPath
-	if outputPath == "" {
-		if cfg := GetConfig(); cfg != nil && cfg.Output.Python.Directory != "" {
-			outputPath = cfg.Output.Python.Directory
-		} else {
-			outputPath = "./sdk-python"
-		}
-	}
-
-	files, err := collectFSLFiles([]string{schemaPath})
-	if err != nil {
-		return err
-	}
-
-	compiledSchemas := make([]*parser.CompiledSchema, 0)
-	for _, file := range files {
-		content, err := os.ReadFile(file)
-		if err != nil {
-			return fmt.Errorf("cannot read %s: %w", file, err)
-		}
-
-		result := parser.ParseWithDiagnostics(string(content))
-		if !result.Valid {
-			message := "unknown error"
-			if len(result.Diagnostics) > 0 {
-				message = result.Diagnostics[0].Message
-			}
-			return fmt.Errorf("schema validation failed in %s: %s", file, message)
-		}
-
-		for _, typeDef := range result.Schema.Types {
-			derived := deriveApiID(typeDef.Name)
-			compiled, err := parser.Compile(result.Schema, typeDef.Name, derived, false)
-			if err != nil {
-				return fmt.Errorf("failed to compile schema %s in %s: %w", typeDef.Name, file, err)
-			}
-			compiled.ApiID = derived
-			compiledSchemas = append(compiledSchemas, compiled)
-		}
-	}
-
-	if err := os.MkdirAll(outputPath, 0o755); err != nil {
-		return fmt.Errorf("failed to create output directory: %w", err)
-	}
-
-	baseURL := ""
-	if cfg := GetConfig(); cfg != nil && cfg.Workspace.APIURL != "" {
-		baseURL = cfg.Workspace.APIURL
-	}
-
-	generator := python.New()
-	generated, err := generator.Generate(compiledSchemas, sdk.GeneratorConfig{
-		BaseURL:        baseURL,
-		WorkspaceAPIID: generateWorkspaceAPIID,
-		IncludeClient:  true,
-		TargetAPI:      target,
+	return runGenerate(generateParams{
+		language:      "Python",
+		outputDefault: "./sdk-python",
+		outputConfig:  outputConfig,
+		generator:     python.New(),
+		genConfig: sdk.GeneratorConfig{
+			TargetAPI: generateTarget,
+		},
 	})
-	if err != nil {
-		return fmt.Errorf("failed to generate Python SDK: %w", err)
-	}
-
-	fileNames := make([]string, 0, len(generated.Files))
-	for name := range generated.Files {
-		fileNames = append(fileNames, name)
-	}
-	sort.Strings(fileNames)
-
-	for _, name := range fileNames {
-		content := generated.Files[name]
-		filePath := filepath.Join(outputPath, name)
-		if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
-			return fmt.Errorf("failed to write %s: %w", name, err)
-		}
-	}
-
-	fmt.Printf("\033[32m✓\033[0m Generated Python SDK in %s\n", outputPath)
-	fmt.Printf("  - schemas: %d\n", len(compiledSchemas))
-	fmt.Printf("  - files (%d): %s\n", len(fileNames), strings.Join(fileNames, ", "))
-
-	return nil
 }
 
 func deriveApiID(name string) string {

@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -92,26 +93,14 @@ func runKeysList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	_, body, err := client.apiRequest("GET", "/api/v1/api-keys", nil)
+	body, err := client.apiRequest("GET", "/api/v1/api-keys", nil)
 	if err != nil {
 		return fmt.Errorf("failed to list API keys: %w", err)
 	}
 
-	var keys []apiKey
-	if err := json.Unmarshal(body, &keys); err != nil {
-		// Try wrapped format.
-		var wrapper struct {
-			Keys []apiKey `json:"keys"`
-			Data []apiKey `json:"data"`
-		}
-		if err2 := json.Unmarshal(body, &wrapper); err2 != nil {
-			return fmt.Errorf("failed to parse server response: %w", err)
-		}
-		if len(wrapper.Keys) > 0 {
-			keys = wrapper.Keys
-		} else {
-			keys = wrapper.Data
-		}
+	keys, err := unmarshalListResponse[apiKey](body, "keys", "data")
+	if err != nil {
+		return err
 	}
 
 	if len(keys) == 0 {
@@ -141,7 +130,7 @@ func runKeysCreate(cmd *cobra.Command, args []string) error {
 		Scope: keysCreateScope,
 	}
 
-	_, body, err := client.apiRequest("POST", "/api/v1/api-keys", payload)
+	body, err := client.apiRequest("POST", "/api/v1/api-keys", payload)
 	if err != nil {
 		return fmt.Errorf("failed to create API key: %w", err)
 	}
@@ -172,7 +161,7 @@ func runKeysRevoke(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	_, _, err = client.apiRequest("DELETE", "/api/v1/api-keys/"+keyID, nil)
+	_, err = client.apiRequest("DELETE", "/api/v1/api-keys/"+url.PathEscape(keyID), nil)
 	if err != nil {
 		return fmt.Errorf("failed to revoke API key %s: %w", keyID, err)
 	}
@@ -222,11 +211,12 @@ func printKeysTable(keys []apiKey) {
 
 // truncate shortens s to at most n characters, appending "..." if truncated.
 func truncate(s string, n int) string {
-	if len(s) <= n {
+	runes := []rune(s)
+	if len(runes) <= n {
 		return s
 	}
 	if n <= 3 {
-		return s[:n]
+		return string(runes[:n])
 	}
-	return s[:n-3] + "..."
+	return string(runes[:n-3]) + "..."
 }
