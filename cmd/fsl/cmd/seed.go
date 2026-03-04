@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -78,7 +79,7 @@ func runSeed(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	apiPath := fmt.Sprintf("/api/v1/projects/%s/documents", seedProject)
+	apiPath := fmt.Sprintf("/api/v1/projects/%s/documents", url.PathEscape(seedProject))
 	created := 0
 	failed := 0
 
@@ -100,7 +101,7 @@ func runSeed(cmd *cobra.Command, args []string) error {
 			Data:   doc.Data,
 		}
 
-		_, _, err := client.apiRequest("POST", apiPath, payload)
+		_, err := client.apiRequest("POST", apiPath, payload)
 		if err != nil {
 			fmt.Printf("\033[31m✗\033[0m Document %d (%s) — %v\n", i+1, schema, err)
 			failed++

@@ -80,6 +80,49 @@ func mapLintSeverity(s parser.LintSeverity) DiagnosticSeverity {
 }
 
 func findLintNameRange(doc *Document, lr parser.LintResult) Range {
+	// If FieldName is set, search for "<FieldName>:" after the line containing "type <TypeName>"
+	if lr.FieldName != "" && lr.TypeName != "" {
+		inType := false
+		for lineIndex, line := range doc.Lines {
+			trimmed := strings.TrimSpace(line)
+			if !inType {
+				if strings.HasPrefix(trimmed, "type ") && strings.Contains(trimmed, lr.TypeName) {
+					inType = true
+				}
+				continue
+			}
+			// Check if we've left the type block
+			if trimmed == "}" {
+				inType = false
+				continue
+			}
+			idx := strings.Index(line, lr.FieldName+":")
+			if idx >= 0 {
+				return Range{
+					Start: Position{Line: lineIndex, Character: idx},
+					End:   Position{Line: lineIndex, Character: idx + len(lr.FieldName)},
+				}
+			}
+		}
+	}
+
+	// If only TypeName is set, search for "type <TypeName>" or "enum <TypeName>"
+	if lr.TypeName != "" && lr.FieldName == "" {
+		for lineIndex, line := range doc.Lines {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "type ") || strings.HasPrefix(trimmed, "enum ") {
+				idx := strings.Index(line, lr.TypeName)
+				if idx >= 0 {
+					return Range{
+						Start: Position{Line: lineIndex, Character: idx},
+						End:   Position{Line: lineIndex, Character: idx + len(lr.TypeName)},
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback: find first occurrence of the quoted name
 	name := extractFirstQuoted(lr.Message)
 	if name == "" {
 		return Range{}

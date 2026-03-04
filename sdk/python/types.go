@@ -110,9 +110,11 @@ func ToPascalCase(s string) string {
 	if len(s) == 0 {
 		return s
 	}
-	result := []byte(s)
-	result[0] = toUpper(result[0])
-	return string(result)
+	runes := []rune(s)
+	if runes[0] >= 'a' && runes[0] <= 'z' {
+		runes[0] -= 32
+	}
+	return string(runes)
 }
 
 // ToSnakeCase converts a PascalCase/camelCase string to snake_case
@@ -121,12 +123,13 @@ func ToSnakeCase(s string) string {
 		return s
 	}
 
-	var result []byte
-	for i, ch := range []byte(s) {
+	runes := []rune(s)
+	var result []rune
+	for i, ch := range runes {
 		if ch >= 'A' && ch <= 'Z' {
 			if i > 0 {
-				prev := s[i-1]
-				nextLower := i+1 < len(s) && s[i+1] >= 'a' && s[i+1] <= 'z'
+				prev := runes[i-1]
+				nextLower := i+1 < len(runes) && runes[i+1] >= 'a' && runes[i+1] <= 'z'
 				if (prev >= 'a' && prev <= 'z') || (prev >= '0' && prev <= '9') || ((prev >= 'A' && prev <= 'Z') && nextLower) {
 					result = append(result, '_')
 				}
@@ -137,11 +140,4 @@ func ToSnakeCase(s string) string {
 		}
 	}
 	return string(result)
-}
-
-func toUpper(b byte) byte {
-	if b >= 'a' && b <= 'z' {
-		return b - 32
-	}
-	return b
 }

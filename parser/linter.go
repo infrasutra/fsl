@@ -23,10 +23,12 @@ type LintRule struct {
 
 // LintResult represents a lint finding
 type LintResult struct {
-	Rule    LintRule
-	Message string
-	Line    int
-	Column  int
+	Rule      LintRule
+	Message   string
+	Line      int
+	Column    int
+	TypeName  string // parent type name for context-aware range finding
+	FieldName string // field name for context-aware range finding
 }
 
 // LinterConfig controls which rules are enabled
@@ -80,13 +82,13 @@ func lintNamingConvention(schema *Schema) []LintResult {
 		if !isPascalCase(typeDef.Name) {
 			r := rule
 			r.Message = fmt.Sprintf("type name '%s' should be PascalCase (first letter uppercase)", typeDef.Name)
-			results = append(results, LintResult{Rule: r, Message: r.Message})
+			results = append(results, LintResult{Rule: r, Message: r.Message, TypeName: typeDef.Name})
 		}
 		for _, field := range typeDef.Fields {
 			if !isCamelCase(field.Name) {
 				r := rule
 				r.Message = fmt.Sprintf("field name '%s' on type '%s' should be camelCase (first letter lowercase)", field.Name, typeDef.Name)
-				results = append(results, LintResult{Rule: r, Message: r.Message})
+				results = append(results, LintResult{Rule: r, Message: r.Message, TypeName: typeDef.Name, FieldName: field.Name})
 			}
 		}
 	}
@@ -94,7 +96,7 @@ func lintNamingConvention(schema *Schema) []LintResult {
 		if !isPascalCase(enumDef.Name) {
 			r := rule
 			r.Message = fmt.Sprintf("enum name '%s' should be PascalCase (first letter uppercase)", enumDef.Name)
-			results = append(results, LintResult{Rule: r, Message: r.Message})
+			results = append(results, LintResult{Rule: r, Message: r.Message, TypeName: enumDef.Name})
 		}
 	}
 	return results
@@ -118,7 +120,7 @@ func lintUnusedTypes(schema *Schema) []LintResult {
 		if !referenced[typeDef.Name] {
 			r := rule
 			r.Message = fmt.Sprintf("type '%s' is never referenced as a relation target by any other type", typeDef.Name)
-			results = append(results, LintResult{Rule: r, Message: r.Message})
+			results = append(results, LintResult{Rule: r, Message: r.Message, TypeName: typeDef.Name})
 		}
 	}
 	return results
@@ -136,7 +138,7 @@ func lintRequiredFieldOrdering(schema *Schema) []LintResult {
 			} else if seenOptional {
 				r := rule
 				r.Message = fmt.Sprintf("required field '%s' on type '%s' appears after optional fields; consider moving required fields first", field.Name, typeDef.Name)
-				results = append(results, LintResult{Rule: r, Message: r.Message})
+				results = append(results, LintResult{Rule: r, Message: r.Message, TypeName: typeDef.Name, FieldName: field.Name})
 			}
 		}
 	}
@@ -151,7 +153,7 @@ func lintRelationCardinality(schema *Schema) []LintResult {
 			if field.IsRelation && !field.Array {
 				r := rule
 				r.Message = fmt.Sprintf("relation field '%s' on type '%s' is a singular relation; consider whether a one-to-many ([%s]) relation is intended", field.Name, typeDef.Name, field.Type)
-				results = append(results, LintResult{Rule: r, Message: r.Message})
+				results = append(results, LintResult{Rule: r, Message: r.Message, TypeName: typeDef.Name, FieldName: field.Name})
 			}
 		}
 	}
@@ -165,7 +167,7 @@ func lintMaxFieldCount(schema *Schema, maxCount int) []LintResult {
 		if len(typeDef.Fields) > maxCount {
 			r := rule
 			r.Message = fmt.Sprintf("type '%s' has %d fields, which exceeds the recommended maximum of %d; consider splitting it into smaller types", typeDef.Name, len(typeDef.Fields), maxCount)
-			results = append(results, LintResult{Rule: r, Message: r.Message})
+			results = append(results, LintResult{Rule: r, Message: r.Message, TypeName: typeDef.Name})
 		}
 	}
 	return results

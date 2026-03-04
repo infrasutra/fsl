@@ -10,6 +10,28 @@ import (
 	"time"
 )
 
+// unmarshalListResponse tries to decode body as []T, then falls back to
+// wrapper objects keyed by wrapperKeys (e.g. {"keys":[…], "data":[…]}).
+func unmarshalListResponse[T any](body []byte, wrapperKeys ...string) ([]T, error) {
+	var items []T
+	if err := json.Unmarshal(body, &items); err == nil {
+		return items, nil
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("failed to parse server response: %w", err)
+	}
+	for _, key := range wrapperKeys {
+		if data, ok := raw[key]; ok {
+			var items []T
+			if err := json.Unmarshal(data, &items); err == nil && len(items) > 0 {
+				return items, nil
+			}
+		}
+	}
+	return nil, nil
+}
+
 const defaultAPIURL = "http://localhost:7080"
 
 // apiClient holds configuration for making API requests.
@@ -55,12 +77,12 @@ func newAPIClient() (*apiClient, error) {
 
 // apiRequest performs an HTTP request to the given path with an optional JSON body.
 // path should start with "/" (e.g. "/api/v1/schemas").
-func (c *apiClient) apiRequest(method, path string, body interface{}) (*http.Response, []byte, error) {
+func (c *apiClient) apiRequest(method, path string, body interface{}) ([]byte, error) {
 	var bodyReader io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to encode request body: %w", err)
+			return nil, fmt.Errorf("failed to encode request body: %w", err)
 		}
 		bodyReader = bytes.NewReader(data)
 	}
@@ -68,7 +90,7 @@ func (c *apiClient) apiRequest(method, path string, body interface{}) (*http.Res
 	url := c.baseURL + path
 	req, err := http.NewRequest(method, url, bodyReader)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
@@ -77,24 +99,24 @@ func (c *apiClient) apiRequest(method, path string, body interface{}) (*http.Res
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, nil, fmt.Errorf("request failed: %w", err)
+		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return resp, nil, fmt.Errorf("failed to read response: %w", err)
+		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	if err := handleAPIError(resp.StatusCode, respBody); err != nil {
-		return resp, respBody, err
+		return respBody, err
 	}
 
-	return resp, respBody, nil
+	return respBody, nil
 }
 
 // apiRequestRaw performs a request with a raw byte body (e.g. plain text schema content).
-func (c *apiClient) apiRequestRaw(method, path string, contentType string, body []byte) (*http.Response, []byte, error) {
+func (c *apiClient) apiRequestRaw(method, path string, contentType string, body []byte) ([]byte, error) {
 	var bodyReader io.Reader
 	if body != nil {
 		bodyReader = bytes.NewReader(body)
@@ -103,7 +125,7 @@ func (c *apiClient) apiRequestRaw(method, path string, contentType string, body 
 	url := c.baseURL + path
 	req, err := http.NewRequest(method, url, bodyReader)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
@@ -114,20 +136,20 @@ func (c *apiClient) apiRequestRaw(method, path string, contentType string, body 
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, nil, fmt.Errorf("request failed: %w", err)
+		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return resp, nil, fmt.Errorf("failed to read response: %w", err)
+		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	if err := handleAPIError(resp.StatusCode, respBody); err != nil {
-		return resp, respBody, err
+		return respBody, err
 	}
 
-	return resp, respBody, nil
+	return respBody, nil
 }
 
 // handleAPIError maps HTTP status codes to user-friendly error messages.
