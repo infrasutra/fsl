@@ -24,6 +24,7 @@ builds:
       - -s -w
       - -X github.com/infrasutra/fsl/cmd/fsl/cmd.Version={{.Version}}
       - -X github.com/infrasutra/fsl/cmd/fsl/cmd.BuildDate={{.Date}}
+      - -X github.com/infrasutra/fsl/lsp.Version={{.Version}}
 
 archives:
   - id: default

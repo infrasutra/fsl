@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 )
 
+var Version = "dev"
+
 // Handler handles LSP requests and notifications
 type Handler struct {
 	server      *Server
@@ -105,7 +107,7 @@ func (h *Handler) handleInitialize(params json.RawMessage) (*InitializeResult, e
 		},
 		ServerInfo: &ServerInfo{
 			Name:    "fsl-lsp",
-			Version: "0.1.0",
+			Version: Version,
 		},
 	}, nil
 }
