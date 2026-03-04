@@ -2,6 +2,8 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/infrasutra/fsl.svg)](https://pkg.go.dev/github.com/infrasutra/fsl)
 [![CI](https://github.com/infrasutra/fsl/actions/workflows/ci.yml/badge.svg)](https://github.com/infrasutra/fsl/actions/workflows/ci.yml)
+[![Codecov](https://codecov.io/gh/infrasutra/fsl/branch/main/graph/badge.svg)](https://codecov.io/gh/infrasutra/fsl)
+[![Go Report Card](https://goreportcard.com/badge/github.com/infrasutra/fsl)](https://goreportcard.com/report/github.com/infrasutra/fsl)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 **FSL** is a schema-first domain language for defining content models. It powers [Flux CMS](https://github.com/infrasutra/fluxcms) but can be used independently for any schema-driven project.
@@ -55,7 +57,7 @@ fsl validate schema.fsl
 ### Generate TypeScript SDK
 
 ```bash
-fsl generate schema.fsl --lang ts --output ./sdk
+fsl generate typescript --schema ./schemas --output ./sdk --target content
 ```
 
 ### Editor Integration
@@ -115,6 +117,13 @@ output, err := gen.Generate(compiledSchemas, sdk.GeneratorConfig{
 - [FSL Language Reference](docs/fsl.md)
 - [CLI Usage](docs/cli.md)
 
+## Community and Project Policies
+
+- [Contributing Guide](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security Policy](SECURITY.md)
+- [Support](SUPPORT.md)
+
 ## Contributing
 
 Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
@@ -122,3 +131,5 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE).
+
+Additional attribution details are listed in [NOTICE](NOTICE).

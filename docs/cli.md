@@ -49,6 +49,7 @@ const post = await client.post.getBySlug('hello-world');
 
 ## Notes
 
-- Config file lookup uses `.fluxcms.yaml` or `.fluxcms.yml` from current directory upward.
+- Config file lookup uses `.fsl.yaml` or `.fsl.yml` from current directory upward.
+- Legacy `.fluxcms.yaml` and `.fluxcms.yml` are still recognized for compatibility.
 - Default schema directory is `./schemas`.
 - Default TypeScript output directory is `./sdk`.

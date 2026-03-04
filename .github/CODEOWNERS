@@ -1,0 +1,14 @@
+# Default code owners
+* @infrasutra
+
+# Parser and language core
+/parser/ @infrasutra
+
+# LSP and editor integration
+/lsp/ @infrasutra
+
+# SDK generation
+/sdk/ @infrasutra
+
+# CLI surface and commands
+/cmd/ @infrasutra

@@ -20,6 +20,21 @@ make test
 5. Commit with conventional prefixes: `feat:`, `fix:`, `docs:`, `chore:`
 6. Open a Pull Request
 
+## Pull Request Checklist
+
+Before opening a PR, make sure you:
+
+- Added or updated tests for behavior changes
+- Updated docs when command behavior or public APIs changed
+- Kept changes scoped to a single concern when possible
+- Verified `go test ./...` passes locally
+
+## Community Standards
+
+- Read and follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- For security disclosures, follow [SECURITY.md](SECURITY.md) instead of filing a public issue
+- For usage and troubleshooting questions, use [SUPPORT.md](SUPPORT.md)
+
 ## Code Style
 
 - Go formatting: `gofmt` (tabs)
