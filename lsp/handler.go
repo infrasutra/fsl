@@ -64,6 +64,10 @@ func (h *Handler) handleRequest(method string, params json.RawMessage) (interfac
 		return h.handleDocumentSymbol(params)
 	case "textDocument/references":
 		return h.handleReferences(params)
+	case "textDocument/prepareRename":
+		return h.handlePrepareRename(params)
+	case "textDocument/rename":
+		return h.handleRename(params)
 	default:
 		return nil, nil
 	}
@@ -103,7 +107,10 @@ func (h *Handler) handleInitialize(params json.RawMessage) (*InitializeResult, e
 			HoverProvider:          true,
 			DefinitionProvider:     true,
 			DocumentSymbolProvider: true,
-			ReferencesProvider:     true,
+			ReferencesProvider: true,
+			RenameProvider: &RenameOptions{
+				PrepareProvider: true,
+			},
 		},
 		ServerInfo: &ServerInfo{
 			Name:    "fsl-lsp",
@@ -228,6 +235,34 @@ func (h *Handler) handleReferences(params json.RawMessage) (interface{}, error) 
 	}
 
 	return GetReferences(doc, p.Position, p.Context.IncludeDeclaration), nil
+}
+
+func (h *Handler) handlePrepareRename(params json.RawMessage) (interface{}, error) {
+	var p TextDocumentPositionParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
+	}
+
+	doc := h.server.GetDocuments().Get(p.TextDocument.URI)
+	if doc == nil {
+		return nil, nil
+	}
+
+	return GetPrepareRename(doc, p.Position), nil
+}
+
+func (h *Handler) handleRename(params json.RawMessage) (interface{}, error) {
+	var p RenameParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
+	}
+
+	doc := h.server.GetDocuments().Get(p.TextDocument.URI)
+	if doc == nil {
+		return nil, nil
+	}
+
+	return GetRename(doc, p.Position, p.NewName), nil
 }
 
 func (h *Handler) publishDiagnostics(uri string) {

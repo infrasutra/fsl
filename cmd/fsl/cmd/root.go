@@ -29,7 +29,17 @@ type Config struct {
 			Directory string `yaml:"directory"`
 			Client    string `yaml:"client"`
 		} `yaml:"typescript"`
+		Python struct {
+			Directory string `yaml:"directory"`
+		} `yaml:"python"`
 	} `yaml:"output"`
+	Lint struct {
+		NamingConvention      *bool `yaml:"naming_convention"`
+		UnusedTypes           *bool `yaml:"unused_types"`
+		RequiredFieldOrdering *bool `yaml:"required_field_ordering"`
+		RelationCardinality   *bool `yaml:"relation_cardinality"`
+		MaxFieldCount         int   `yaml:"max_field_count"`
+	} `yaml:"lint"`
 }
 
 var (
@@ -41,13 +51,16 @@ var rootCmd = &cobra.Command{
 	Use:   "fsl",
 	Short: "FSL CLI - Schema-first headless CMS tooling",
 	Long: `FSL CLI provides tools for managing FSL schemas, migrations,
-and TypeScript SDK generation.
+TypeScript SDK generation, and CMS server integration.
 
 Features:
   - Schema validation with detailed error reporting
   - Migration generation and management
   - TypeScript SDK generation
-  - LSP server for editor integration`,
+  - LSP server for editor integration
+  - Push/pull schemas to and from the CMS server
+  - Seed content documents from JSON or YAML files
+  - Manage workspace API keys`,
 	Version: Version,
 }
 

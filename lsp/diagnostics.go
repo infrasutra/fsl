@@ -51,7 +51,61 @@ func GetDiagnostics(doc *Document) []Diagnostic {
 		})
 	}
 
+	// Run lint rules and append as Warning/Hint diagnostics
+	lintResults := parser.Lint(schema, parser.DefaultLinterConfig())
+	for _, lr := range lintResults {
+		sev := mapLintSeverity(lr.Rule.Severity)
+		rng := findLintNameRange(doc, lr)
+		diagnostics = append(diagnostics, Diagnostic{
+			Range:    rng,
+			Severity: sev,
+			Source:   "fsl-lint",
+			Message:  lr.Message,
+			Code:     lr.Rule.Name,
+		})
+	}
+
 	return diagnostics
+}
+
+func mapLintSeverity(s parser.LintSeverity) DiagnosticSeverity {
+	switch s {
+	case parser.LintWarning:
+		return SeverityWarning
+	case parser.LintHint:
+		return SeverityHint
+	default:
+		return SeverityWarning
+	}
+}
+
+func findLintNameRange(doc *Document, lr parser.LintResult) Range {
+	name := extractFirstQuoted(lr.Message)
+	if name == "" {
+		return Range{}
+	}
+	for lineIndex, line := range doc.Lines {
+		idx := strings.Index(line, name)
+		if idx >= 0 {
+			return Range{
+				Start: Position{Line: lineIndex, Character: idx},
+				End:   Position{Line: lineIndex, Character: idx + len(name)},
+			}
+		}
+	}
+	return Range{}
+}
+
+func extractFirstQuoted(s string) string {
+	start := strings.Index(s, "'")
+	if start < 0 {
+		return ""
+	}
+	end := strings.Index(s[start+1:], "'")
+	if end < 0 {
+		return ""
+	}
+	return s[start+1 : start+1+end]
 }
 
 func findEnumNameRange(doc *Document, enumName string) Range {
