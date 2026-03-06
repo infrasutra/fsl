@@ -74,6 +74,8 @@ func (h *Handler) handleRequest(method string, params json.RawMessage) (interfac
 		return h.handlePrepareRename(params)
 	case "textDocument/rename":
 		return h.handleRename(params)
+	case "textDocument/formatting":
+		return h.handleFormatting(params)
 	default:
 		return nil, nil
 	}
@@ -110,11 +112,12 @@ func (h *Handler) handleInitialize(params json.RawMessage) (*InitializeResult, e
 				TriggerCharacters: []string{"@", ":", " "},
 				ResolveProvider:   false,
 			},
-			HoverProvider:           true,
-			DefinitionProvider:      true,
-			DocumentSymbolProvider:  true,
-			WorkspaceSymbolProvider: true,
-			ReferencesProvider:      true,
+			HoverProvider:              true,
+			DefinitionProvider:         true,
+			DocumentSymbolProvider:     true,
+			WorkspaceSymbolProvider:    true,
+			ReferencesProvider:         true,
+			DocumentFormattingProvider: true,
 			RenameProvider: &RenameOptions{
 				PrepareProvider: true,
 			},
@@ -340,6 +343,7 @@ func (h *Handler) publishDiagnostics(uri string) {
 		return
 	}
 
-	diagnostics := GetDiagnostics(doc)
+	allDocs := h.server.GetDocuments().All()
+	diagnostics := GetDiagnostics(doc, allDocs)
 	h.server.PublishDiagnostics(uri, diagnostics)
 }

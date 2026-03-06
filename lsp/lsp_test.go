@@ -143,36 +143,46 @@ func TestDocumentStore(t *testing.T) {
 
 func TestGetDiagnostics_ValidSchema(t *testing.T) {
 	doc := newDoc("type Post { title: String! }")
-	diags := GetDiagnostics(doc)
+	diags := GetDiagnostics(doc, []*Document{doc})
 	assert.Empty(t, diags)
 }
 
 func TestGetDiagnostics_SyntaxError(t *testing.T) {
 	doc := newDoc("type Post { title: ")
-	diags := GetDiagnostics(doc)
+	diags := GetDiagnostics(doc, []*Document{doc})
 	assert.NotEmpty(t, diags)
 	assert.Equal(t, SeverityError, diags[0].Severity)
 }
 
 func TestGetDiagnostics_UnknownType(t *testing.T) {
 	doc := newDoc("type Post { author: UnknownType! }")
-	diags := GetDiagnostics(doc)
+	diags := GetDiagnostics(doc, []*Document{doc})
 	assert.NotEmpty(t, diags)
 }
 
 func TestGetDiagnostics_EmptyDocument(t *testing.T) {
 	doc := newDoc("")
-	diags := GetDiagnostics(doc)
+	diags := GetDiagnostics(doc, []*Document{doc})
 	assert.Empty(t, diags)
 }
 
 func TestGetDiagnostics_MultipleTypes(t *testing.T) {
 	doc := newDoc(blogSchema)
-	diags := GetDiagnostics(doc)
+	diags := GetDiagnostics(doc, []*Document{doc})
 	// Unreferenced enum produces a warning (severity 2), not an error
 	for _, d := range diags {
 		assert.NotEqual(t, SeverityError, d.Severity,
 			"should not have errors, got: %v", d)
+	}
+}
+
+func TestGetDiagnostics_CrossFileTypeReference(t *testing.T) {
+	articleDoc := NewDocument("file:///article.fsl", "type Article {\n  author: Author! @relation\n}", 1)
+	authorDoc := NewDocument("file:///author.fsl", "type Author {\n  name: String!\n}", 1)
+
+	diags := GetDiagnostics(articleDoc, []*Document{articleDoc, authorDoc})
+	for _, d := range diags {
+		assert.NotEqual(t, SeverityError, d.Severity, "should not have unknown type error: %v", d)
 	}
 }
 
@@ -333,6 +343,48 @@ func TestHandler_HandleInitialize_EnablesWorkspaceSymbolProvider(t *testing.T) {
 	result, err := handler.handleInitialize(nil)
 	require.NoError(t, err)
 	assert.Equal(t, true, result.Capabilities.WorkspaceSymbolProvider)
+	assert.Equal(t, true, result.Capabilities.DocumentFormattingProvider)
+}
+
+func TestHandler_HandleFormatting_ReturnsTextEdit(t *testing.T) {
+	server := &Server{documents: NewDocumentStore()}
+	handler := NewHandler(server)
+
+	server.GetDocuments().Open("file:///models/article.fsl", `type Article{title:String!@maxLength(200)@minLength(1)}`, 1)
+
+	params, err := json.Marshal(DocumentFormattingParams{
+		TextDocument: TextDocumentIdentifier{URI: "file:///models/article.fsl"},
+		Options:      FormattingOptions{TabSize: 2, InsertSpaces: true},
+	})
+	require.NoError(t, err)
+
+	result, err := handler.handleFormatting(params)
+	require.NoError(t, err)
+
+	edits, ok := result.([]TextEdit)
+	require.True(t, ok)
+	require.Len(t, edits, 1)
+	assert.Equal(t, "type Article {\n  title: String! @minLength(1) @maxLength(200)\n}\n", edits[0].NewText)
+}
+
+func TestHandler_HandleFormatting_InvalidSchemaReturnsNoEdits(t *testing.T) {
+	server := &Server{documents: NewDocumentStore()}
+	handler := NewHandler(server)
+
+	server.GetDocuments().Open("file:///models/article.fsl", `type Article { title:`, 1)
+
+	params, err := json.Marshal(DocumentFormattingParams{
+		TextDocument: TextDocumentIdentifier{URI: "file:///models/article.fsl"},
+		Options:      FormattingOptions{TabSize: 2, InsertSpaces: true},
+	})
+	require.NoError(t, err)
+
+	result, err := handler.handleFormatting(params)
+	require.NoError(t, err)
+
+	edits, ok := result.([]TextEdit)
+	require.True(t, ok)
+	assert.Empty(t, edits)
 }
 
 func TestHandler_HandleWorkspaceSymbol_QueryAcrossDocuments(t *testing.T) {

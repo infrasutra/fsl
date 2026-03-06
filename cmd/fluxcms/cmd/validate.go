@@ -57,13 +57,72 @@ func runValidate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	fileContents := make(map[string]string, len(files))
+	resultsByFile := make(map[string]ValidationResult, len(files))
+
+	for _, file := range files {
+		result := ValidationResult{
+			File:        file,
+			Valid:       true,
+			Diagnostics: []parser.Diagnostic{},
+		}
+
+		content, readErr := os.ReadFile(file)
+		if readErr != nil {
+			result.Valid = false
+			result.Diagnostics = append(result.Diagnostics, parser.Diagnostic{
+				Severity:    parser.SeverityError,
+				Message:     fmt.Sprintf("cannot read file: %v", readErr),
+				StartLine:   1,
+				StartColumn: 1,
+				EndLine:     1,
+				EndColumn:   1,
+				Source:      "io",
+			})
+			resultsByFile[file] = result
+			continue
+		}
+
+		result.Lines = strings.Split(string(content), "\n")
+		resultsByFile[file] = result
+		fileContents[file] = string(content)
+	}
+
+	diagResultsByFile := parseFilesWithWorkspaceTypes(fileContents)
+	for file, diagResult := range diagResultsByFile {
+		result := resultsByFile[file]
+		result.Valid = diagResult.Valid
+		result.Diagnostics = diagResult.Diagnostics
+
+		if validateLint && diagResult.Valid && diagResult.Schema != nil {
+			lintResults := parser.Lint(diagResult.Schema, parser.DefaultLinterConfig())
+			for _, lr := range lintResults {
+				severity := parser.SeverityWarning
+				if lr.Rule.Severity == parser.LintHint {
+					severity = parser.SeverityHint
+				}
+				result.Diagnostics = append(result.Diagnostics, parser.Diagnostic{
+					Severity:    severity,
+					Message:     lr.Message,
+					StartLine:   lr.Line,
+					StartColumn: lr.Column,
+					EndLine:     lr.Line,
+					EndColumn:   lr.Column,
+					Source:      "lint",
+				})
+			}
+		}
+
+		resultsByFile[file] = result
+	}
+
 	report := ValidationReport{
 		Results:    make([]ValidationResult, 0, len(files)),
 		TotalFiles: len(files),
 	}
 
 	for _, file := range files {
-		result := validateFile(file)
+		result := resultsByFile[file]
 		report.Results = append(report.Results, result)
 		if result.Valid {
 			report.ValidFiles++
@@ -77,55 +136,6 @@ func runValidate(cmd *cobra.Command, args []string) error {
 	default:
 		return outputPretty(report)
 	}
-}
-
-func validateFile(path string) ValidationResult {
-	result := ValidationResult{
-		File:        path,
-		Valid:       true,
-		Diagnostics: []parser.Diagnostic{},
-	}
-
-	content, err := os.ReadFile(path)
-	if err != nil {
-		result.Valid = false
-		result.Diagnostics = append(result.Diagnostics, parser.Diagnostic{
-			Severity:    parser.SeverityError,
-			Message:     fmt.Sprintf("cannot read file: %v", err),
-			StartLine:   1,
-			StartColumn: 1,
-			EndLine:     1,
-			EndColumn:   1,
-			Source:      "io",
-		})
-		return result
-	}
-
-	result.Lines = strings.Split(string(content), "\n")
-	diagResult := parser.ParseWithDiagnostics(string(content))
-	result.Valid = diagResult.Valid
-	result.Diagnostics = diagResult.Diagnostics
-
-	if validateLint && diagResult.Valid && diagResult.Schema != nil {
-		lintResults := parser.Lint(diagResult.Schema, parser.DefaultLinterConfig())
-		for _, lr := range lintResults {
-			severity := parser.SeverityWarning
-			if lr.Rule.Severity == parser.LintHint {
-				severity = parser.SeverityHint
-			}
-			result.Diagnostics = append(result.Diagnostics, parser.Diagnostic{
-				Severity:    severity,
-				Message:     lr.Message,
-				StartLine:   lr.Line,
-				StartColumn: lr.Column,
-				EndLine:     lr.Line,
-				EndColumn:   lr.Column,
-				Source:      "lint",
-			})
-		}
-	}
-
-	return result
 }
 
 func outputJSON(report ValidationReport) error {
