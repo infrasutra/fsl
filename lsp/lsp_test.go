@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/infrasutra/fsl/parser"
@@ -325,6 +326,162 @@ func TestGetDocumentSymbols_EmptyDocument(t *testing.T) {
 	assert.Empty(t, symbols)
 }
 
+func TestHandler_HandleInitialize_EnablesWorkspaceSymbolProvider(t *testing.T) {
+	server := &Server{documents: NewDocumentStore()}
+	handler := NewHandler(server)
+
+	result, err := handler.handleInitialize(nil)
+	require.NoError(t, err)
+	assert.Equal(t, true, result.Capabilities.WorkspaceSymbolProvider)
+}
+
+func TestHandler_HandleWorkspaceSymbol_QueryAcrossDocuments(t *testing.T) {
+	server := &Server{documents: NewDocumentStore()}
+	handler := NewHandler(server)
+
+	server.GetDocuments().Open("file:///models/article.fsl", `
+type Article {
+  title: String!
+}
+
+enum Status {
+  draft
+  published
+}
+`, 1)
+
+	server.GetDocuments().Open("file:///models/category.fsl", `
+type Category {
+  name: String!
+}
+`, 1)
+
+	params, err := json.Marshal(WorkspaceSymbolParams{Query: "category"})
+	require.NoError(t, err)
+
+	result, err := handler.handleRequest("workspace/symbol", params)
+	require.NoError(t, err)
+
+	symbols, ok := result.([]SymbolInformation)
+	require.True(t, ok)
+	require.Len(t, symbols, 1)
+
+	assert.Equal(t, "Category", symbols[0].Name)
+	assert.Equal(t, SymbolKindClass, symbols[0].Kind)
+	assert.Equal(t, "file:///models/category.fsl", symbols[0].Location.URI)
+}
+
+func TestHandler_HandleWorkspaceSymbol_EmptyQueryReturnsAllTopLevelSymbols(t *testing.T) {
+	server := &Server{documents: NewDocumentStore()}
+	handler := NewHandler(server)
+
+	server.GetDocuments().Open("file:///models/article.fsl", `
+type Article {
+  title: String!
+}
+
+enum Status {
+  draft
+  published
+}
+`, 1)
+
+	server.GetDocuments().Open("file:///models/category.fsl", `
+type Category {
+  name: String!
+}
+`, 1)
+
+	params, err := json.Marshal(WorkspaceSymbolParams{Query: ""})
+	require.NoError(t, err)
+
+	result, err := handler.handleWorkspaceSymbol(params)
+	require.NoError(t, err)
+
+	symbols, ok := result.([]SymbolInformation)
+	require.True(t, ok)
+	require.NotEmpty(t, symbols)
+
+	names := make(map[string]bool)
+	for _, symbol := range symbols {
+		names[symbol.Name] = true
+	}
+
+	assert.True(t, names["Article"])
+	assert.True(t, names["Category"])
+	assert.True(t, names["Status"])
+}
+
+func TestWorkspaceSymbols(t *testing.T) {
+	server := &Server{documents: NewDocumentStore()}
+	handler := NewHandler(server)
+
+	// Normal formatting
+	server.GetDocuments().Open("file:///workspace/article.fsl", `
+type Article {
+	title: String!
+	name: String
+}
+
+enum Status {
+	draft
+	published
+}
+`, 1)
+
+	// Weird formatting (double spaces, etc.)
+	server.GetDocuments().Open("file:///workspace/category.fsl", `
+type  Category  {
+	name  :  String!
+}
+`, 1)
+
+	t.Run("find category with weird formatting", func(t *testing.T) {
+		params, err := json.Marshal(WorkspaceSymbolParams{Query: "category"})
+		require.NoError(t, err)
+
+		result, err := handler.handleWorkspaceSymbol(params)
+		require.NoError(t, err)
+
+		symbols, ok := result.([]SymbolInformation)
+		require.True(t, ok)
+		require.Len(t, symbols, 1, "Should find Category even with weird formatting")
+		assert.Equal(t, "Category", symbols[0].Name)
+	})
+
+	t.Run("find field with weird formatting", func(t *testing.T) {
+		params, err := json.Marshal(WorkspaceSymbolParams{Query: "name"})
+		require.NoError(t, err)
+
+		result, err := handler.handleWorkspaceSymbol(params)
+		require.NoError(t, err)
+
+		symbols, ok := result.([]SymbolInformation)
+		require.True(t, ok)
+		require.Len(t, symbols, 2, "Should find both name fields")
+
+		names := make(map[string]string)
+		for _, s := range symbols {
+			names[s.ContainerName] = s.Name
+		}
+		assert.Equal(t, "name", names["Article"])
+		assert.Equal(t, "name", names["Category"])
+	})
+
+	t.Run("empty query returns all", func(t *testing.T) {
+		params, err := json.Marshal(WorkspaceSymbolParams{Query: ""})
+		require.NoError(t, err)
+
+		result, err := handler.handleWorkspaceSymbol(params)
+		require.NoError(t, err)
+
+		symbols, ok := result.([]SymbolInformation)
+		require.True(t, ok)
+		// Article, title, name, Status, draft, published, Category, name = 8 symbols
+		assert.Len(t, symbols, 8)
+	})
+}
+
 // ===========================================================================
 // Definition
 // ===========================================================================
@@ -333,7 +490,7 @@ func TestGetDefinition_TypeReference(t *testing.T) {
 	doc := newDoc(blogSchema)
 	// "Category" in "category: Category @relation" — line index depends on exact content
 	// Find the line with "category: Category"
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		line := doc.GetLine(i)
 		if line == "" {
 			continue
@@ -352,7 +509,7 @@ func TestGetDefinition_TypeReference(t *testing.T) {
 func TestGetReferences_TypeName(t *testing.T) {
 	doc := newDoc(blogSchema)
 	// Find "Category" type declaration line
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		line := doc.GetLine(i)
 		if isTypeDeclaration(line, "Category") {
 			refs := GetReferences(doc, Position{Line: i, Character: indexOf(line, "Category")}, true)

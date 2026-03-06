@@ -63,7 +63,7 @@ func newAPIClient() (*apiClient, error) {
 	}
 
 	if apiKey == "" {
-		return nil, fmt.Errorf("API key is required: set api_key in .fsl.yaml or FSL_API_KEY environment variable")
+		return nil, fmt.Errorf("API key is required: set api_key in .fluxcms.yaml or FSL_API_KEY environment variable")
 	}
 
 	return &apiClient{

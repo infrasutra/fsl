@@ -178,7 +178,6 @@ func isWholeWord(line string, pos, length int) bool {
 }
 
 func isTypeDeclaration(line, typeName string) bool {
-	trimmed := strings.TrimSpace(line)
-	return strings.HasPrefix(trimmed, "type "+typeName) ||
-		strings.HasPrefix(trimmed, "enum "+typeName)
+	f := strings.Fields(line)
+	return len(f) >= 2 && (f[0] == "type" || f[0] == "enum") && (f[1] == typeName || strings.HasPrefix(f[1], typeName+"{"))
 }

@@ -258,15 +258,6 @@ func TestParse_NewDecorators(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "blocks decorator for RichText",
-			source: `
-				type Article {
-					content: RichText! @blocks("paragraph", "heading", "image")
-				}
-			`,
-			wantErr: false,
-		},
-		{
 			name: "maxSize decorator for Image",
 			source: `
 				type Article {

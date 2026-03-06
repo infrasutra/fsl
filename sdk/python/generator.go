@@ -164,13 +164,16 @@ func (g *Generator) generateCreateInput(schema *parser.CompiledSchema, _ sdk.Gen
 	for _, field := range schema.Fields {
 		pyType := g.mapInputFieldType(&field)
 		fieldName := ToSnakeCase(field.Name)
+		aliasArg := g.fieldAliasArg(field.Name, fieldName)
 
 		if !field.Required && !field.ArrayReq {
-			buf.WriteString(fmt.Sprintf("    %s: %s = None\n", fieldName, pyType))
+			buf.WriteString(fmt.Sprintf("    %s: %s = Field(default=None%s)\n", fieldName, pyType, aliasArg))
 		} else {
-			buf.WriteString(fmt.Sprintf("    %s: %s\n", fieldName, pyType))
+			buf.WriteString(fmt.Sprintf("    %s: %s = Field(...%s)\n", fieldName, pyType, aliasArg))
 		}
 	}
+
+	buf.WriteString("\n    model_config = {\"populate_by_name\": True}\n")
 
 	return buf.String()
 }
@@ -191,13 +194,24 @@ func (g *Generator) generateUpdateInput(schema *parser.CompiledSchema, _ sdk.Gen
 	for _, field := range schema.Fields {
 		pyType := g.mapInputFieldType(&field)
 		fieldName := ToSnakeCase(field.Name)
+		aliasArg := g.fieldAliasArg(field.Name, fieldName)
 		if !strings.HasPrefix(pyType, "Optional[") {
 			pyType = "Optional[" + pyType + "]"
 		}
-		buf.WriteString(fmt.Sprintf("    %s: %s = None\n", fieldName, pyType))
+		buf.WriteString(fmt.Sprintf("    %s: %s = Field(default=None%s)\n", fieldName, pyType, aliasArg))
 	}
 
+	buf.WriteString("\n    model_config = {\"populate_by_name\": True}\n")
+
 	return buf.String()
+}
+
+// fieldAliasArg returns a Field alias argument if the Python name differs from the FSL name.
+func (g *Generator) fieldAliasArg(fslName, pyName string) string {
+	if fslName != pyName {
+		return fmt.Sprintf(", alias=\"%s\"", fslName)
+	}
+	return ""
 }
 
 // mapInputFieldType maps a field to its Python input type (relations become str IDs)
@@ -285,9 +299,10 @@ func (g *Generator) generateClient(schemas []*parser.CompiledSchema, config sdk.
 		typeName := ToPascalCase(schema.Name)
 		apiID := schema.ApiID
 
+		buf.WriteString(fmt.Sprintf("    # --- %s ---\n\n", typeName))
+
 		if config.TargetAPI == "content" {
 			wsAPIID := config.WorkspaceAPIID
-			buf.WriteString(fmt.Sprintf("    # --- %s ---\n\n", typeName))
 
 			buf.WriteString(fmt.Sprintf("    def list_%s(self, page: int = 1, limit: int = 20, locale: str = \"en\") -> list[dict[str, Any]]:\n", ToSnakeCase(schema.Name)))
 			buf.WriteString(fmt.Sprintf("        \"\"\"List published %s content.\"\"\"\n", schema.Name))
@@ -300,6 +315,27 @@ func (g *Generator) generateClient(schemas []*parser.CompiledSchema, config sdk.
 			buf.WriteString(fmt.Sprintf("    def get_%s_by_id(self, id: str) -> dict[str, Any]:\n", ToSnakeCase(schema.Name)))
 			buf.WriteString(fmt.Sprintf("        \"\"\"Get published %s by ID.\"\"\"\n", schema.Name))
 			buf.WriteString(fmt.Sprintf("        return self._request(\"GET\", f\"/api/v1/content/%s/%s/id/{id}\")\n\n", wsAPIID, apiID))
+		} else {
+			buf.WriteString(fmt.Sprintf("    def list_%s(self, project_id: str, page: int = 1, limit: int = 20, locale: str = \"en\") -> list[dict[str, Any]]:\n", ToSnakeCase(schema.Name)))
+			buf.WriteString(fmt.Sprintf("        \"\"\"List %s documents.\"\"\"\n", schema.Name))
+			buf.WriteString(fmt.Sprintf("        return self._request(\"GET\", f\"/api/v1/projects/{project_id}/documents\", params={\"schema\": \"%s\", \"page\": page, \"limit\": limit, \"locale\": locale})\n\n", apiID))
+
+			buf.WriteString(fmt.Sprintf("    def get_%s(self, project_id: str, document_id: str) -> dict[str, Any]:\n", ToSnakeCase(schema.Name)))
+			buf.WriteString(fmt.Sprintf("        \"\"\"Get a %s document by ID.\"\"\"\n", schema.Name))
+			buf.WriteString("        return self._request(\"GET\", f\"/api/v1/projects/{project_id}/documents/{document_id}\")\n\n")
+
+			buf.WriteString(fmt.Sprintf("    def create_%s(self, project_id: str, input: Create%sInput) -> dict[str, Any]:\n", ToSnakeCase(schema.Name), typeName))
+			buf.WriteString(fmt.Sprintf("        \"\"\"Create a new %s document.\"\"\"\n", schema.Name))
+			buf.WriteString(fmt.Sprintf("        return self._request(\"POST\", f\"/api/v1/projects/{project_id}/documents\", json={\"schema_api_id\": \"%s\", \"locale\": \"en\", \"data\": input.model_dump(by_alias=True)})\n\n", apiID))
+
+			buf.WriteString(fmt.Sprintf("    def update_%s(self, project_id: str, document_id: str, input: Update%sInput) -> dict[str, Any]:\n", ToSnakeCase(schema.Name), typeName))
+			buf.WriteString(fmt.Sprintf("        \"\"\"Update a %s document.\"\"\"\n", schema.Name))
+			buf.WriteString("        return self._request(\"PUT\", f\"/api/v1/projects/{project_id}/documents/{document_id}\", json={\"data\": input.model_dump(by_alias=True, exclude_unset=True)})\n\n")
+
+			buf.WriteString(fmt.Sprintf("    def delete_%s(self, project_id: str, document_id: str) -> None:\n", ToSnakeCase(schema.Name)))
+			buf.WriteString(fmt.Sprintf("        \"\"\"Delete a %s document.\"\"\"\n", schema.Name))
+			buf.WriteString("        response = self._client.request(\"DELETE\", f\"/api/v1/projects/{project_id}/documents/{document_id}\")\n")
+			buf.WriteString("        response.raise_for_status()\n\n")
 		}
 	}
 

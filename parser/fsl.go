@@ -718,22 +718,6 @@ func validateRichText(fieldName string, value any, field *CompiledField) []Valid
 		}}
 	}
 
-	// Get allowed blocks from decorator
-	var allowedBlocks map[string]bool
-	if blocksVal, ok := field.Decorators[DecBlocks]; ok {
-		allowedBlocks = make(map[string]bool)
-		switch v := blocksVal.(type) {
-		case string:
-			allowedBlocks[v] = true
-		case []any:
-			for _, b := range v {
-				if str, ok := b.(string); ok {
-					allowedBlocks[str] = true
-				}
-			}
-		}
-	}
-
 	for i, block := range blocks {
 		blockPath := fmt.Sprintf("%s[%d]", fieldName, i)
 		blockMap, ok := block.(map[string]any)
@@ -746,21 +730,12 @@ func validateRichText(fieldName string, value any, field *CompiledField) []Valid
 		}
 
 		// Check block has a type
-		blockType, ok := blockMap["type"].(string)
-		if !ok {
+		if _, ok := blockMap["type"].(string); !ok {
 			errors = append(errors, ValidationError{
 				Field:   blockPath,
 				Message: "RichText block must have a 'type' field",
 			})
 			continue
-		}
-
-		// Validate block type if restrictions are specified
-		if allowedBlocks != nil && !allowedBlocks[blockType] {
-			errors = append(errors, ValidationError{
-				Field:   blockPath,
-				Message: fmt.Sprintf("RichText block type '%s' is not allowed", blockType),
-			})
 		}
 	}
 

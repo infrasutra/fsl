@@ -3,7 +3,7 @@
 type Article {
   title: String! @minLength(1) @maxLength(200) @searchable
   slug: String! @pattern("^[a-z0-9-]+$") @unique @index
-  body: RichText @blocks("paragraph", "heading", "list", "image", "code")
+  body: RichText
   excerpt: Text @maxLength(500)
   publishedAt: DateTime @index
   category: Category! @relation(inverse: "articles", onDelete: "restrict")

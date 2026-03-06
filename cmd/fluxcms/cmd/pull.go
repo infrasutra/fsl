@@ -20,10 +20,10 @@ Existing files with the same name will be overwritten.
 
 Examples:
   # Pull schemas into the configured schema directory
-  fsl pull
+  fluxcms pull
 
   # Pull schemas into a custom directory
-  fsl pull --output ./downloaded-schemas`,
+  fluxcms pull --output ./downloaded-schemas`,
 	RunE: runPull,
 }
 

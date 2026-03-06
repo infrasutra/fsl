@@ -27,13 +27,13 @@ even when validation produces warnings.
 
 Examples:
   # Push all schemas to the server
-  fsl push
+  fluxcms push
 
   # Validate locally without uploading
-  fsl push --dry-run
+  fluxcms push --dry-run
 
   # Push even if schemas have warnings
-  fsl push --force`,
+  fluxcms push --force`,
 	RunE: runPush,
 }
 

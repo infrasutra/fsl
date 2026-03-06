@@ -36,6 +36,10 @@ func TestToPascalCase(t *testing.T) {
 		{"Post", "Post"},
 		{"", ""},
 		{"alreadyPascal", "AlreadyPascal"},
+		{"blog_post", "BlogPost"},
+		{"my-type", "MyType"},
+		{"my_blog_post", "MyBlogPost"},
+		{"already_PascalCase", "AlreadyPascalCase"},
 	}
 	for _, tt := range tests {
 		got := ToPascalCase(tt.input)

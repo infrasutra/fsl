@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/infrasutra/fsl/cmd/fsl/cmd"
+	"github.com/infrasutra/fsl/cmd/fluxcms/cmd"
 )
 
 func main() {

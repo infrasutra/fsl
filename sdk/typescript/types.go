@@ -1,6 +1,10 @@
 package typescript
 
-import "github.com/infrasutra/fsl/parser"
+import (
+	"strings"
+
+	"github.com/infrasutra/fsl/parser"
+)
 
 // TypeMapping maps FSL types to TypeScript types
 var TypeMapping = map[string]string{
@@ -218,11 +222,20 @@ func ToPascalCase(s string) string {
 	if len(s) == 0 {
 		return s
 	}
-
-	// Handle already PascalCase or simple strings
-	result := []byte(s)
-	result[0] = toUpper(result[0])
-	return string(result)
+	parts := strings.FieldsFunc(s, func(r rune) bool { return r == '_' || r == '-' })
+	if len(parts) == 0 {
+		return s
+	}
+	var b strings.Builder
+	for _, part := range parts {
+		if len(part) == 0 {
+			continue
+		}
+		bs := []byte(part)
+		bs[0] = toUpper(bs[0])
+		b.Write(bs)
+	}
+	return b.String()
 }
 
 // ToCamelCase converts a string to camelCase

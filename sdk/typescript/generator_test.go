@@ -23,6 +23,27 @@ func sampleSchema() *parser.CompiledSchema {
 	}
 }
 
+func TestToPascalCase(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"post", "Post"},
+		{"Post", "Post"},
+		{"", ""},
+		{"blog_post", "BlogPost"},
+		{"my-type", "MyType"},
+		{"my_blog_post", "MyBlogPost"},
+		{"already_PascalCase", "AlreadyPascalCase"},
+	}
+	for _, tt := range tests {
+		got := ToPascalCase(tt.input)
+		if got != tt.want {
+			t.Errorf("ToPascalCase(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
 func TestGenerateCMSClientPaths(t *testing.T) {
 	gen := New()
 	generated, err := gen.Generate([]*parser.CompiledSchema{sampleSchema()}, sdk.GeneratorConfig{

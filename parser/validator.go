@@ -242,13 +242,6 @@ func (v *Validator) validateDecorator(fieldPath, fieldType string, field *FieldD
 		// Validate relation decorator
 		v.validateRelationDecorator(fieldPath, field, decoratorValue)
 
-	case DecBlocks:
-		// Only valid for RichText
-		if fieldType != TypeRichText {
-			v.addError(fieldPath, "@blocks can only be used with RichText type")
-		}
-		v.validateBlocksDecorator(fieldPath, decoratorValue)
-
 	case DecSlices:
 		// Only valid for JSON and only on non-array fields
 		if fieldType != TypeJSON {
@@ -335,28 +328,6 @@ func (v *Validator) validateRelationDecorator(fieldPath string, field *FieldDef,
 				v.addError(fieldPath, "@relation onDelete argument must be a string")
 			}
 		}
-	}
-}
-
-func (v *Validator) validateBlocksDecorator(fieldPath string, decoratorValue any) {
-	// @blocks can accept a single string or array of strings
-	switch val := decoratorValue.(type) {
-	case string:
-		if !ValidRichTextBlocks[val] {
-			v.addError(fieldPath, fmt.Sprintf("unknown RichText block type: %s", val))
-		}
-	case []any:
-		for _, item := range val {
-			if str, ok := item.(string); ok {
-				if !ValidRichTextBlocks[str] {
-					v.addError(fieldPath, fmt.Sprintf("unknown RichText block type: %s", str))
-				}
-			} else {
-				v.addError(fieldPath, "@blocks values must be strings")
-			}
-		}
-	default:
-		v.addError(fieldPath, "@blocks must be a string or array of strings")
 	}
 }
 

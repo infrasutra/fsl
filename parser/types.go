@@ -50,8 +50,7 @@ const (
 
 	// Phase 2 field decorators
 	DecRelation  = "relation"  // relation to another type
-	DecBlocks    = "blocks"    // allowed RichText block types
-	DecSlices    = "slices"    // typed slice zone for dynamic page sections
+	DecSlices = "slices" // typed slice zone for dynamic page sections
 	DecMaxSize   = "maxSize"   // max file size in bytes
 	DecFormats   = "formats"   // allowed file formats
 	DecPrecision = "precision" // decimal precision for Float
@@ -78,22 +77,6 @@ var ReservedFieldNames = map[string]bool{
 	"id":        true,
 	"createdAt": true,
 	"updatedAt": true,
-}
-
-// ValidRichTextBlocks defines allowed RichText block types
-var ValidRichTextBlocks = map[string]bool{
-	"paragraph":  true,
-	"heading":    true,
-	"blockquote": true,
-	"code":       true,
-	"list":       true,
-	"image":      true,
-	"video":      true,
-	"embed":      true,
-	"table":      true,
-	"divider":    true,
-	"callout":    true,
-	"toggle":     true,
 }
 
 // ValidImageFormats defines allowed image file formats

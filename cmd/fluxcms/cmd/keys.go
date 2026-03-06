@@ -26,7 +26,7 @@ var keysListCmd = &cobra.Command{
 	Long: `List all API keys for the current workspace.
 
 Examples:
-  fsl keys list`,
+  fluxcms keys list`,
 	RunE: runKeysList,
 }
 
@@ -37,10 +37,10 @@ var keysCreateCmd = &cobra.Command{
 
 Examples:
   # Create a read-only API key
-  fsl keys create "CI Read Key" --scope read-only
+  fluxcms keys create "CI Read Key" --scope read-only
 
   # Create an admin API key
-  fsl keys create "Deploy Bot" --scope admin`,
+  fluxcms keys create "Deploy Bot" --scope admin`,
 	Args: cobra.ExactArgs(1),
 	RunE: runKeysCreate,
 }
@@ -51,7 +51,7 @@ var keysRevokeCmd = &cobra.Command{
 	Long: `Revoke an API key by its ID. This action cannot be undone.
 
 Examples:
-  fsl keys revoke key_abc123`,
+  fluxcms keys revoke key_abc123`,
 	Args: cobra.ExactArgs(1),
 	RunE: runKeysRevoke,
 }
