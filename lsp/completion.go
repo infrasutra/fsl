@@ -114,13 +114,6 @@ var fieldDecorators = []CompletionItem{
 		InsertText: "@relation",
 	},
 	{
-		Label:            "@blocks",
-		Kind:             CompletionKindProperty,
-		Detail:           "Allowed RichText block types",
-		InsertText:       "@blocks(\"${1:paragraph}\", \"${2:heading}\")",
-		InsertTextFormat: InsertTextFormatSnippet,
-	},
-	{
 		Label:            "@slices",
 		Kind:             CompletionKindProperty,
 		Detail:           "Typed slice-zone mappings for JSON",

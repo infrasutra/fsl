@@ -25,7 +25,7 @@ func TestCLI_Version(t *testing.T) {
 	bin := buildCLI(t)
 	out, err := exec.Command(bin, "--version").CombinedOutput()
 	require.NoError(t, err)
-	assert.Contains(t, string(out), "fsl version")
+	assert.Contains(t, string(out), "fluxcms version")
 }
 
 func TestCLI_Help(t *testing.T) {
@@ -116,7 +116,7 @@ func TestCLI_Init(t *testing.T) {
 	require.NoError(t, err, "init should succeed: %s", string(out))
 
 	// Verify created files
-	assert.FileExists(t, filepath.Join(projectDir, ".fsl.yaml"))
+	assert.FileExists(t, filepath.Join(projectDir, ".fluxcms.yaml"))
 	assert.FileExists(t, filepath.Join(projectDir, "README.md"))
 	assert.DirExists(t, filepath.Join(projectDir, "schemas"))
 	assert.FileExists(t, filepath.Join(projectDir, "schemas", "example.fsl"))

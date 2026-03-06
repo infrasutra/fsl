@@ -2,9 +2,13 @@ package lsp
 
 import (
 	"encoding/json"
+	"sort"
+	"strings"
 )
 
 var Version = "dev"
+
+const workspaceSymbolResultLimit = 200
 
 // Handler handles LSP requests and notifications
 type Handler struct {
@@ -62,6 +66,8 @@ func (h *Handler) handleRequest(method string, params json.RawMessage) (interfac
 		return h.handleDefinition(params)
 	case "textDocument/documentSymbol":
 		return h.handleDocumentSymbol(params)
+	case "workspace/symbol":
+		return h.handleWorkspaceSymbol(params)
 	case "textDocument/references":
 		return h.handleReferences(params)
 	case "textDocument/prepareRename":
@@ -104,10 +110,11 @@ func (h *Handler) handleInitialize(params json.RawMessage) (*InitializeResult, e
 				TriggerCharacters: []string{"@", ":", " "},
 				ResolveProvider:   false,
 			},
-			HoverProvider:          true,
-			DefinitionProvider:     true,
-			DocumentSymbolProvider: true,
-			ReferencesProvider: true,
+			HoverProvider:           true,
+			DefinitionProvider:      true,
+			DocumentSymbolProvider:  true,
+			WorkspaceSymbolProvider: true,
+			ReferencesProvider:      true,
 			RenameProvider: &RenameOptions{
 				PrepareProvider: true,
 			},
@@ -221,6 +228,68 @@ func (h *Handler) handleDocumentSymbol(params json.RawMessage) (interface{}, err
 	}
 
 	return GetDocumentSymbols(doc), nil
+}
+
+func (h *Handler) handleWorkspaceSymbol(params json.RawMessage) (interface{}, error) {
+	var p WorkspaceSymbolParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
+	}
+
+	query := strings.ToLower(strings.TrimSpace(p.Query))
+	results := make([]SymbolInformation, 0)
+
+	for _, doc := range h.server.GetDocuments().All() {
+		symbols := GetDocumentSymbols(doc)
+		if collectWorkspaceSymbols(doc.URI, symbols, "", query, &results) {
+			break
+		}
+	}
+
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].Name != results[j].Name {
+			return results[i].Name < results[j].Name
+		}
+		if results[i].Location.URI != results[j].Location.URI {
+			return results[i].Location.URI < results[j].Location.URI
+		}
+		if results[i].Location.Range.Start.Line != results[j].Location.Range.Start.Line {
+			return results[i].Location.Range.Start.Line < results[j].Location.Range.Start.Line
+		}
+		return results[i].Location.Range.Start.Character < results[j].Location.Range.Start.Character
+	})
+
+	return results, nil
+}
+
+func collectWorkspaceSymbols(uri string, symbols []DocumentSymbol, containerName, query string, results *[]SymbolInformation) bool {
+	for _, symbol := range symbols {
+		if query == "" || strings.Contains(strings.ToLower(symbol.Name), query) {
+			*results = append(*results, SymbolInformation{
+				Name:          symbol.Name,
+				Kind:          symbol.Kind,
+				Tags:          symbol.Tags,
+				Deprecated:    symbol.Deprecated,
+				ContainerName: containerName,
+				Location: Location{
+					URI:   uri,
+					Range: symbol.SelectionRange,
+				},
+			})
+
+			if len(*results) >= workspaceSymbolResultLimit {
+				return true
+			}
+		}
+
+		if len(symbol.Children) > 0 {
+			if collectWorkspaceSymbols(uri, symbol.Children, symbol.Name, query, results) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func (h *Handler) handleReferences(params json.RawMessage) (interface{}, error) {

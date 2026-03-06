@@ -97,20 +97,6 @@ func init() {
 	migrateDiffCmd.MarkFlagRequired("to")
 }
 
-type SchemaChange struct {
-	Type        string `json:"type"` // "add_type", "remove_type", "add_field", "remove_field", "modify_field"
-	TypeName    string `json:"typeName"`
-	FieldName   string `json:"fieldName,omitempty"`
-	Description string `json:"description"`
-	Breaking    bool   `json:"breaking"`
-}
-
-type MigrationPreview struct {
-	Changes       []SchemaChange `json:"changes"`
-	BreakingCount int            `json:"breakingCount"`
-	SafeCount     int            `json:"safeCount"`
-}
-
 func getSchemaPath() (string, error) {
 	if migrateSchemaPath != "" {
 		return migrateSchemaPath, nil
@@ -121,19 +107,121 @@ func getSchemaPath() (string, error) {
 	return "", fmt.Errorf("no schema path specified (use --schema flag or set schemas.directory in .fsl.yaml)")
 }
 
+// loadPreviousState reads the most recent migration file and extracts stored compiled schemas.
+// Returns nil if no previous state exists (first migration).
+func loadPreviousState(migrationsDir string) (map[string]*parser.CompiledSchema, error) {
+	entries, err := os.ReadDir(migrationsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to read migrations directory: %w", err)
+	}
+
+	var latestFile string
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".json") {
+			if entry.Name() > latestFile {
+				latestFile = entry.Name()
+			}
+		}
+	}
+
+	if latestFile == "" {
+		return nil, nil
+	}
+
+	data, err := os.ReadFile(filepath.Join(migrationsDir, latestFile))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read migration file: %w", err)
+	}
+
+	var migration struct {
+		SchemaState map[string]*parser.CompiledSchema `json:"schemaState"`
+	}
+	if err := json.Unmarshal(data, &migration); err != nil {
+		return nil, fmt.Errorf("failed to parse migration file: %w", err)
+	}
+
+	if migration.SchemaState == nil {
+		fmt.Fprintf(os.Stderr, "\033[33m⚠\033[0m  Latest migration '%s' has no schema state (created before diff support).\n", latestFile)
+		fmt.Fprintf(os.Stderr, "   Run: fsl migrate generate --name=baseline --schema=<path> to establish state.\n")
+	}
+
+	return migration.SchemaState, nil
+}
+
+// diffCurrentVsPrevious diffs all current compiled schemas against a previous state.
+// If previous is nil, all types are treated as new additions.
+func diffCurrentVsPrevious(current map[string]*parser.CompiledSchema, previous map[string]*parser.CompiledSchema) []parser.SchemaChange {
+	var allChanges []parser.SchemaChange
+
+	if previous == nil {
+		for typeName := range current {
+			allChanges = append(allChanges, parser.SchemaChange{
+				Type:     parser.ChangeTypeAdded,
+				Kind:     parser.ChangeKindType,
+				Path:     fmt.Sprintf("types.%s", typeName),
+				Breaking: false,
+				Message:  fmt.Sprintf("type '%s' was added", typeName),
+			})
+		}
+		return allChanges
+	}
+
+	// Check for removed types
+	for typeName := range previous {
+		if _, exists := current[typeName]; !exists {
+			allChanges = append(allChanges, parser.SchemaChange{
+				Type:     parser.ChangeTypeRemoved,
+				Kind:     parser.ChangeKindType,
+				Path:     fmt.Sprintf("types.%s", typeName),
+				Breaking: true,
+				Message:  fmt.Sprintf("type '%s' was removed", typeName),
+			})
+		}
+	}
+
+	// Check for added and modified types
+	for typeName, currentSchema := range current {
+		prevSchema, exists := previous[typeName]
+		if !exists {
+			allChanges = append(allChanges, parser.SchemaChange{
+				Type:     parser.ChangeTypeAdded,
+				Kind:     parser.ChangeKindType,
+				Path:     fmt.Sprintf("types.%s", typeName),
+				Breaking: false,
+				Message:  fmt.Sprintf("type '%s' was added", typeName),
+			})
+			continue
+		}
+
+		diff := parser.DiffSchemas(prevSchema, currentSchema)
+		for _, change := range diff.Changes {
+			change.Path = fmt.Sprintf("%s.%s", typeName, change.Path)
+			allChanges = append(allChanges, change)
+		}
+	}
+
+	return allChanges
+}
+
 func runMigrateGenerate(cmd *cobra.Command, args []string) error {
 	path, err := getSchemaPath()
 	if err != nil {
 		return err
 	}
 
-	// Load and validate schemas
-	_, err = loadSchemas(path)
+	schemas, err := loadSchemas(path)
 	if err != nil {
 		return err
 	}
 
-	// Generate migration file
+	currentCompiled, _, err := compileSchemasByType(schemas)
+	if err != nil {
+		return fmt.Errorf("failed to compile schemas: %w", err)
+	}
+
 	timestamp := time.Now().Format("20060102150405")
 	safeName := strings.ReplaceAll(strings.ToLower(migrateName), " ", "_")
 	filename := fmt.Sprintf("%s_%s.json", timestamp, safeName)
@@ -143,11 +231,19 @@ func runMigrateGenerate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create migrations directory: %w", err)
 	}
 
+	previousState, err := loadPreviousState(migrationsDir)
+	if err != nil {
+		return fmt.Errorf("failed to load previous schema state: %w", err)
+	}
+
+	changes := diffCurrentVsPrevious(currentCompiled, previousState)
+
 	migration := map[string]any{
-		"version":   timestamp,
-		"name":      migrateName,
-		"createdAt": time.Now().Format(time.RFC3339),
-		"changes":   []any{}, // Would be populated by comparing with previous schema state
+		"version":     timestamp,
+		"name":        migrateName,
+		"createdAt":   time.Now().Format(time.RFC3339),
+		"changes":     changes,
+		"schemaState": currentCompiled,
 	}
 
 	migrationPath := filepath.Join(migrationsDir, filename)
@@ -161,6 +257,19 @@ func runMigrateGenerate(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("\033[32m✓\033[0m Created migration: %s\n", migrationPath)
+	if len(changes) > 0 {
+		breakingCount := 0
+		for _, c := range changes {
+			if c.Breaking {
+				breakingCount++
+			}
+		}
+		fmt.Printf("  %d change(s) recorded", len(changes))
+		if breakingCount > 0 {
+			fmt.Printf(", \033[31m%d breaking\033[0m", breakingCount)
+		}
+		fmt.Println()
+	}
 	return nil
 }
 
@@ -175,50 +284,64 @@ func runMigratePreview(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// For now, just show schema structure as preview
-	// In a full implementation, this would compare with stored schema state
-	preview := MigrationPreview{
-		Changes: []SchemaChange{},
+	currentCompiled, _, err := compileSchemasByType(schemas)
+	if err != nil {
+		return fmt.Errorf("failed to compile schemas: %w", err)
 	}
 
-	for _, schema := range schemas {
-		for _, t := range schema.Types {
-			preview.Changes = append(preview.Changes, SchemaChange{
-				Type:        "type_detected",
-				TypeName:    t.Name,
-				Description: fmt.Sprintf("Type '%s' with %d field(s)", t.Name, len(t.Fields)),
-				Breaking:    false,
-			})
-			preview.SafeCount++
-		}
-		for _, e := range schema.Enums {
-			preview.Changes = append(preview.Changes, SchemaChange{
-				Type:        "enum_detected",
-				TypeName:    e.Name,
-				Description: fmt.Sprintf("Enum '%s' with %d value(s)", e.Name, len(e.Values)),
-				Breaking:    false,
-			})
-			preview.SafeCount++
+	migrationsDir := filepath.Join(filepath.Dir(path), "migrations")
+	previousState, err := loadPreviousState(migrationsDir)
+	if err != nil {
+		return fmt.Errorf("failed to load previous schema state: %w", err)
+	}
+
+	changes := diffCurrentVsPrevious(currentCompiled, previousState)
+
+	breakingCount := 0
+	safeCount := 0
+	for _, c := range changes {
+		if c.Breaking {
+			breakingCount++
+		} else {
+			safeCount++
 		}
 	}
 
 	switch migrateFormat {
 	case "json":
+		preview := map[string]any{
+			"changes":       changes,
+			"breakingCount": breakingCount,
+			"safeCount":     safeCount,
+		}
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		return enc.Encode(preview)
 	default:
-		fmt.Println("Schema Preview:")
+		if len(changes) == 0 {
+			fmt.Println("No changes detected since last migration.")
+			return nil
+		}
+		fmt.Println("Migration Preview:")
 		fmt.Println()
-		for _, change := range preview.Changes {
+		for _, change := range changes {
 			icon := "\033[32m+\033[0m"
-			if change.Breaking {
+			switch {
+			case change.Breaking:
 				icon = "\033[31m!\033[0m"
+			case change.Type == parser.ChangeTypeRemoved:
+				icon = "\033[31m-\033[0m"
+			case change.Type == parser.ChangeTypeModified:
+				icon = "\033[33m~\033[0m"
 			}
-			fmt.Printf("  %s %s: %s\n", icon, change.TypeName, change.Description)
+			fmt.Printf("  %s [%s] %s\n", icon, change.Path, change.Message)
 		}
 		fmt.Println()
-		fmt.Printf("Total: %d type(s)/enum(s) detected\n", len(preview.Changes))
+		fmt.Printf("Total: %d change(s)", len(changes))
+		if breakingCount > 0 {
+			fmt.Printf(", \033[31m%d breaking\033[0m", breakingCount)
+		}
+		fmt.Println()
 		return nil
 	}
 }
@@ -234,56 +357,50 @@ func runMigrateCheck(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Check for potential breaking changes
-	var issues []SchemaChange
+	currentCompiled, _, err := compileSchemasByType(schemas)
+	if err != nil {
+		return fmt.Errorf("failed to compile schemas: %w", err)
+	}
 
-	for _, schema := range schemas {
-		for _, t := range schema.Types {
-			// Check for required fields without defaults (potential breaking change)
-			for _, f := range t.Fields {
-				if f.Required {
-					if _, hasDefault := f.Decorators["default"]; !hasDefault {
-						issues = append(issues, SchemaChange{
-							Type:        "required_no_default",
-							TypeName:    t.Name,
-							FieldName:   f.Name,
-							Description: fmt.Sprintf("Required field '%s.%s' has no default value", t.Name, f.Name),
-							Breaking:    true,
-						})
-					}
-				}
-			}
+	migrationsDir := filepath.Join(filepath.Dir(path), "migrations")
+	previousState, err := loadPreviousState(migrationsDir)
+	if err != nil {
+		return fmt.Errorf("failed to load previous schema state: %w", err)
+	}
+
+	allChanges := diffCurrentVsPrevious(currentCompiled, previousState)
+
+	var breakingChanges []parser.SchemaChange
+	for _, c := range allChanges {
+		if c.Breaking {
+			breakingChanges = append(breakingChanges, c)
 		}
 	}
 
 	switch migrateFormat {
 	case "json":
 		result := map[string]any{
-			"issues":        issues,
-			"breakingCount": len(issues),
+			"issues":        breakingChanges,
+			"breakingCount": len(breakingChanges),
 		}
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(result); err != nil {
 			return err
 		}
-		if len(issues) > 0 {
+		if len(breakingChanges) > 0 {
 			return fmt.Errorf("breaking changes detected")
 		}
 		return nil
 	default:
-		if len(issues) == 0 {
+		if len(breakingChanges) == 0 {
 			fmt.Printf("\033[32m✓\033[0m No breaking changes detected\n")
 			return nil
 		}
 
-		fmt.Printf("\033[33m!\033[0m Found %d potential issue(s):\n\n", len(issues))
-		for _, issue := range issues {
-			icon := "\033[33m⚠\033[0m"
-			if issue.Breaking {
-				icon = "\033[31m✗\033[0m"
-			}
-			fmt.Printf("  %s %s\n", icon, issue.Description)
+		fmt.Printf("\033[31m✗\033[0m Found %d breaking change(s):\n\n", len(breakingChanges))
+		for _, issue := range breakingChanges {
+			fmt.Printf("  \033[31m✗\033[0m [%s] %s\n", issue.Path, issue.Message)
 		}
 		fmt.Println()
 		return fmt.Errorf("breaking changes detected")

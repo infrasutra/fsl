@@ -655,6 +655,11 @@ type DocumentSymbolParams struct {
 	TextDocument TextDocumentIdentifier `json:"textDocument"`
 }
 
+// WorkspaceSymbolParams represents workspace symbol request parameters
+type WorkspaceSymbolParams struct {
+	Query string `json:"query"`
+}
+
 // ReferenceParams represents reference request parameters
 type ReferenceParams struct {
 	TextDocumentPositionParams

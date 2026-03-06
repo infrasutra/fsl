@@ -10,7 +10,7 @@ Authoritative reference for the FSL parser/compiler and associated tooling.
 type Article {
   title: String! @minLength(1) @maxLength(200) @searchable
   slug: String! @pattern("^[a-z0-9-]+$") @unique @index
-  body: RichText @blocks("paragraph", "heading", "list", "image")
+  body: RichText
   slices: JSON! @slices(hero: HeroSlice, faq: FaqSlice, cta: CtaSlice)
   publishedAt: DateTime @index
   category: Category! @relation(inverse: "articles", onDelete: "restrict")
@@ -70,7 +70,6 @@ type Category {
   - Long plain text.
 - `RichText`
   - Array of block objects at runtime.
-  - Use `@blocks(...)` to limit allowed block types.
 
 ### Number Types
 
@@ -184,25 +183,6 @@ author: Author! @relation(inverse: "articles", onDelete: "restrict")
 
 - `@minItems(<int>)`
 - `@maxItems(<int>)`
-
-### RichText
-
-- `@blocks("paragraph", "heading", "list", ...)`
-
-Valid block names:
-
-- `paragraph`
-- `heading`
-- `blockquote`
-- `code`
-- `list`
-- `image`
-- `video`
-- `embed`
-- `table`
-- `divider`
-- `callout`
-- `toggle`
 
 ### Image/File
 
@@ -327,9 +307,6 @@ Example:
 
 ## Current Limitations and Gotchas
 
-- Decorator array literal syntax is **not** supported by backend parser.
-  - Do this: `@blocks("paragraph", "heading")`
-  - Not this: array-literal decorator arguments (for example `[...]`)
 - `Reference(...)` field type syntax is not part of backend FSL parser.
   - Use type-name relations instead (`author: Author`).
 - `Enum(...)` field type syntax is not part of backend parser.

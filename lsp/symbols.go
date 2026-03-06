@@ -112,7 +112,7 @@ func findTypeRange(doc *Document, typeName string) *Range {
 		trimmed := strings.TrimSpace(line)
 
 		if !inType {
-			if strings.HasPrefix(trimmed, "type "+typeName) ||
+			if isTypeDeclaration(line, typeName) ||
 				(strings.HasPrefix(trimmed, "@") && containsTypeDeclaration(doc.Lines, i, typeName)) {
 				startLine = i
 				inType = true
@@ -144,7 +144,7 @@ func findTypeRange(doc *Document, typeName string) *Range {
 
 func containsTypeDeclaration(lines []string, fromLine int, typeName string) bool {
 	for i := fromLine; i < len(lines) && i < fromLine+5; i++ {
-		if strings.Contains(lines[i], "type "+typeName) {
+		if isTypeDeclaration(lines[i], typeName) {
 			return true
 		}
 	}
@@ -157,10 +157,8 @@ func findEnumRange(doc *Document, enumName string) *Range {
 	braceCount := 0
 
 	for i, line := range doc.Lines {
-		trimmed := strings.TrimSpace(line)
-
 		if !inEnum {
-			if strings.HasPrefix(trimmed, "enum "+enumName) {
+			if isTypeDeclaration(line, enumName) { // isTypeDeclaration handles both type and enum
 				startLine = i
 				inEnum = true
 			}
@@ -190,10 +188,8 @@ func findFieldRange(doc *Document, typeName, fieldName string) *Range {
 	braceCount := 0
 
 	for i, line := range doc.Lines {
-		trimmed := strings.TrimSpace(line)
-
 		if !inType {
-			if strings.HasPrefix(trimmed, "type "+typeName) {
+			if isTypeDeclaration(line, typeName) {
 				inType = true
 			}
 		}
@@ -202,7 +198,7 @@ func findFieldRange(doc *Document, typeName, fieldName string) *Range {
 			braceCount += strings.Count(line, "{") - strings.Count(line, "}")
 
 			// Look for field definition
-			if strings.HasPrefix(trimmed, fieldName+":") || strings.HasPrefix(trimmed, fieldName+" :") {
+			if isFieldDeclaration(line, fieldName) {
 				col := strings.Index(line, fieldName)
 				return &Range{
 					Start: Position{Line: i, Character: col},
@@ -219,15 +215,22 @@ func findFieldRange(doc *Document, typeName, fieldName string) *Range {
 	return nil
 }
 
+func isFieldDeclaration(line, fieldName string) bool {
+	trimmed := strings.TrimSpace(line)
+	if !strings.Contains(trimmed, ":") {
+		return false
+	}
+	parts := strings.SplitN(trimmed, ":", 2)
+	return strings.TrimSpace(parts[0]) == fieldName
+}
+
 func findEnumValueRange(doc *Document, enumName, value string) *Range {
 	inEnum := false
 	braceCount := 0
 
 	for i, line := range doc.Lines {
-		trimmed := strings.TrimSpace(line)
-
 		if !inEnum {
-			if strings.HasPrefix(trimmed, "enum "+enumName) {
+			if isTypeDeclaration(line, enumName) {
 				inEnum = true
 			}
 		}
@@ -236,6 +239,7 @@ func findEnumValueRange(doc *Document, enumName, value string) *Range {
 			braceCount += strings.Count(line, "{") - strings.Count(line, "}")
 
 			// Look for enum value
+			trimmed := strings.TrimSpace(line)
 			if trimmed == value {
 				col := strings.Index(line, value)
 				return &Range{

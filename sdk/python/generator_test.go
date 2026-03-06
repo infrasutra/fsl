@@ -113,6 +113,43 @@ func TestGenerateEnumLiteral(t *testing.T) {
 	}
 }
 
+func TestGenerateCMSClientMethods(t *testing.T) {
+	gen := New()
+	generated, err := gen.Generate([]*parser.CompiledSchema{sampleSchema()}, sdk.GeneratorConfig{
+		BaseURL:       "",
+		IncludeClient: true,
+		TargetAPI:     "cms",
+	})
+	if err != nil {
+		t.Fatalf("Generate() error: %v", err)
+	}
+
+	client, ok := generated.Files["client.py"]
+	if !ok {
+		t.Fatalf("client.py not generated")
+	}
+
+	checks := []string{
+		"def list_post(self, project_id: str",
+		"def get_post(self, project_id: str, document_id: str",
+		"def create_post(self, project_id: str, input: CreatePostInput",
+		"def update_post(self, project_id: str, document_id: str, input: UpdatePostInput",
+		"def delete_post(self, project_id: str, document_id: str",
+		"/api/v1/projects/{project_id}/documents",
+		`"schema_api_id": "post"`,
+		"Authorization",
+	}
+	for _, check := range checks {
+		if !strings.Contains(client, check) {
+			t.Fatalf("client.py missing expected content: %q", check)
+		}
+	}
+
+	if strings.Contains(client, "X-API-Key") {
+		t.Fatalf("cms client should not use X-API-Key header")
+	}
+}
+
 func TestGenerateCreateUpdateInputs(t *testing.T) {
 	gen := New()
 	generated, err := gen.Generate([]*parser.CompiledSchema{sampleSchema()}, sdk.GeneratorConfig{

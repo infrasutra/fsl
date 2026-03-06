@@ -1,6 +1,10 @@
 package python
 
-import "github.com/infrasutra/fsl/parser"
+import (
+	"strings"
+
+	"github.com/infrasutra/fsl/parser"
+)
 
 // TypeMapping maps FSL types to Python types
 var TypeMapping = map[string]string{
@@ -110,11 +114,22 @@ func ToPascalCase(s string) string {
 	if len(s) == 0 {
 		return s
 	}
-	runes := []rune(s)
-	if runes[0] >= 'a' && runes[0] <= 'z' {
-		runes[0] -= 32
+	parts := strings.FieldsFunc(s, func(r rune) bool { return r == '_' || r == '-' })
+	if len(parts) == 0 {
+		return s
 	}
-	return string(runes)
+	var b strings.Builder
+	for _, part := range parts {
+		if len(part) == 0 {
+			continue
+		}
+		runes := []rune(part)
+		if runes[0] >= 'a' && runes[0] <= 'z' {
+			runes[0] -= 32
+		}
+		b.WriteString(string(runes))
+	}
+	return b.String()
 }
 
 // ToSnakeCase converts a PascalCase/camelCase string to snake_case

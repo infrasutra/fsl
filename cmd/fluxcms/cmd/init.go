@@ -15,7 +15,7 @@ var initCmd = &cobra.Command{
 
 This creates:
   - schemas/ directory with an example schema
-  - .fsl.yaml configuration file
+  - .fluxcms.yaml configuration file
   - README.md with getting started instructions`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runInit,
@@ -93,7 +93,7 @@ enum PostStatus {
 		return fmt.Errorf("failed to create example schema: %w", err)
 	}
 
-	// Create .fsl.yaml
+	// Create .fluxcms.yaml
 	configContent := `version: "1"
 
 # Workspace connection (optional - for remote sync)
@@ -111,7 +111,7 @@ output:
     directory: "./sdk"
     client: "fetch"  # Options: fetch, axios
 `
-	configPath := filepath.Join(projectDir, ".fsl.yaml")
+	configPath := filepath.Join(projectDir, ".fluxcms.yaml")
 	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
 		return fmt.Errorf("failed to create config file: %w", err)
 	}
@@ -132,7 +132,7 @@ fsl validate ./schemas/
 ### Generate TypeScript SDK
 
 ` + "```bash" + `
-fsl generate typescript --schema=./schemas/ --output=./sdk/
+fluxcms generate typescript --schema=./schemas/ --output=./sdk/
 ` + "```" + `
 
 ### Check for Breaking Changes
@@ -148,7 +148,7 @@ fsl migrate check --schema=./schemas/
 ├── schemas/           # FSL schema files
 │   └── example.fsl    # Example schema
 ├── sdk/               # Generated TypeScript SDK (after generation)
-├── .fsl.yaml          # Project configuration
+├── .fluxcms.yaml          # Project configuration
 └── README.md          # This file
 ` + "```" + `
 
@@ -185,6 +185,17 @@ fsl lsp --stdio
 		return fmt.Errorf("failed to create README: %w", err)
 	}
 
+	// Create .gitignore
+	gitignoreContent := `# Generated files
+sdk/
+.fsl-state.json
+*.log
+`
+	gitignorePath := filepath.Join(projectDir, ".gitignore")
+	if err := os.WriteFile(gitignorePath, []byte(gitignoreContent), 0o644); err != nil {
+		return fmt.Errorf("failed to create .gitignore: %w", err)
+	}
+
 	// Print success message
 	fmt.Printf("\033[32m✓\033[0m Created FSL project")
 	if projectDir != "." {
@@ -197,7 +208,7 @@ fsl lsp --stdio
 		fmt.Printf("  cd %s\n", projectDir)
 	}
 	fmt.Println("  fsl validate ./schemas/  # Validate schemas")
-	fmt.Println("  fsl generate typescript  # Generate SDK")
+	fmt.Println("  fluxcms generate typescript  # Generate SDK")
 	fmt.Println()
 
 	return nil

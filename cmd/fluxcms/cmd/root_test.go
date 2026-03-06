@@ -11,14 +11,14 @@ import (
 
 func TestFindConfigFilePrefersFSLConfig(t *testing.T) {
 	root := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(root, ".fsl.yaml"), []byte("version: \"1\"\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".fluxcms.yaml"), []byte("version: \"1\"\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(root, ".fluxcms.yaml"), []byte("version: \"1\"\n"), 0o644))
 
 	nested := filepath.Join(root, "a", "b")
 	require.NoError(t, os.MkdirAll(nested, 0o755))
 
 	path := findConfigFile(nested)
-	assert.Equal(t, filepath.Join(root, ".fsl.yaml"), path)
+	assert.Equal(t, filepath.Join(root, ".fluxcms.yaml"), path)
 }
 
 func TestFindConfigFileFallsBackToLegacyFluxCMSConfig(t *testing.T) {

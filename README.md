@@ -22,7 +22,7 @@
 ### Install CLI
 
 ```bash
-go install github.com/infrasutra/fsl/cmd/fsl@latest
+go install github.com/infrasutra/fsl/cmd/fluxcms@latest
 ```
 
 Or download a pre-built binary from [Releases](https://github.com/infrasutra/fsl/releases).
@@ -35,7 +35,7 @@ Or download a pre-built binary from [Releases](https://github.com/infrasutra/fsl
 type Article {
   title: String! @minLength(1) @maxLength(200) @searchable
   slug: String! @pattern("^[a-z0-9-]+$") @unique @index
-  body: RichText @blocks("paragraph", "heading", "list", "image")
+  body: RichText
   publishedAt: DateTime @index
   category: Category! @relation(inverse: "articles", onDelete: "restrict")
   tags: [String!]! @minItems(1) @maxItems(10)
@@ -51,13 +51,13 @@ type Category {
 ### Validate
 
 ```bash
-fsl validate schema.fsl
+fluxcms validate schema.fsl
 ```
 
 ### Generate TypeScript SDK
 
 ```bash
-fsl generate typescript --schema ./schemas --output ./sdk --target content
+fluxcms generate typescript --schema ./schemas --output ./sdk --target content
 ```
 
 ### Editor Integration
@@ -65,7 +65,7 @@ fsl generate typescript --schema ./schemas --output ./sdk --target content
 Start the LSP server (used by editor extensions):
 
 ```bash
-fsl lsp --stdio
+fluxcms lsp --stdio
 ```
 
 ## Go Library Usage
@@ -110,7 +110,7 @@ output, err := gen.Generate(compiledSchemas, sdk.GeneratorConfig{
 | `sdk/typescript` | TypeScript SDK generator |
 | `template` | Template file parser (YAML/JSON/FSL) |
 | `templates` | Built-in starter templates |
-| `cmd/fsl` | CLI binary |
+| `cmd/fluxcms` | CLI binary |
 
 ## Documentation
 

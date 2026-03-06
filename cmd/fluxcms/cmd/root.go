@@ -48,7 +48,7 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "fsl",
+	Use:   "fluxcms",
 	Short: "FSL CLI - Schema-first headless CMS tooling",
 	Long: `FSL CLI provides tools for managing FSL schemas, migrations,
 TypeScript SDK generation, and CMS server integration.
@@ -73,7 +73,7 @@ func init() {
 	cobra.OnInitialize(initConfig)
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is .fsl.yaml)")
-	rootCmd.SetVersionTemplate(fmt.Sprintf("fsl version %s (built %s)\n", Version, BuildDate))
+	rootCmd.SetVersionTemplate(fmt.Sprintf("fluxcms version %s (built %s)\n", Version, BuildDate))
 }
 
 func initConfig() {

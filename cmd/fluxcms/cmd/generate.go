@@ -32,8 +32,8 @@ Targets:
   python      Generate Python SDK
 
 Examples:
-  fsl generate typescript --schema=./schemas/ --output=./sdk/
-  fsl generate python --schema=./schemas/ --output=./sdk/`,
+  fluxcms generate typescript --schema=./schemas/ --output=./sdk/
+  fluxcms generate python --schema=./schemas/ --output=./sdk/`,
 }
 
 var generateTypescriptCmd = &cobra.Command{

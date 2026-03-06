@@ -28,10 +28,10 @@ format is detected by extension (.json or .yaml/.yml).
 
 Examples:
   # Seed documents from a JSON file
-  fsl seed ./seeds/posts.json --project proj_abc123
+  fluxcms seed ./seeds/posts.json --project proj_abc123
 
   # Seed documents from a YAML file, overriding schema for all documents
-  fsl seed ./seeds/posts.yaml --project proj_abc123 --schema post
+  fluxcms seed ./seeds/posts.yaml --project proj_abc123 --schema post
 
 Seed file format (JSON):
   [

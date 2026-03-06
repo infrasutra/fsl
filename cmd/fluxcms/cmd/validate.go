@@ -11,6 +11,7 @@ import (
 )
 
 var validateFormat string
+var validateLint bool
 
 var validateCmd = &cobra.Command{
 	Use:   "validate [path]",
@@ -33,6 +34,7 @@ Examples:
 func init() {
 	rootCmd.AddCommand(validateCmd)
 	validateCmd.Flags().StringVar(&validateFormat, "format", "pretty", "Output format: pretty, json")
+	validateCmd.Flags().BoolVar(&validateLint, "lint", false, "Run lint rules and report warnings")
 }
 
 type ValidationResult struct {
@@ -104,6 +106,25 @@ func validateFile(path string) ValidationResult {
 	result.Valid = diagResult.Valid
 	result.Diagnostics = diagResult.Diagnostics
 
+	if validateLint && diagResult.Valid && diagResult.Schema != nil {
+		lintResults := parser.Lint(diagResult.Schema, parser.DefaultLinterConfig())
+		for _, lr := range lintResults {
+			severity := parser.SeverityWarning
+			if lr.Rule.Severity == parser.LintHint {
+				severity = parser.SeverityHint
+			}
+			result.Diagnostics = append(result.Diagnostics, parser.Diagnostic{
+				Severity:    severity,
+				Message:     lr.Message,
+				StartLine:   lr.Line,
+				StartColumn: lr.Column,
+				EndLine:     lr.Line,
+				EndColumn:   lr.Column,
+				Source:      "lint",
+			})
+		}
+	}
+
 	return result
 }
 
@@ -118,31 +139,38 @@ func outputPretty(report ValidationReport) error {
 
 	for _, result := range report.Results {
 		if result.Valid {
-			fmt.Printf("\033[32m✓\033[0m %s\n", result.File)
+			if len(result.Diagnostics) > 0 {
+				fmt.Printf("\033[33m⚠\033[0m %s\n", result.File)
+			} else {
+				fmt.Printf("\033[32m✓\033[0m %s\n", result.File)
+			}
 		} else {
 			hasErrors = true
 			fmt.Printf("\033[31m✗\033[0m %s\n", result.File)
-			for _, diag := range result.Diagnostics {
-				severityColor := getSeverityColor(diag.Severity)
-				severityLabel := getSeverityLabel(diag.Severity)
-				source := diag.Source
-				if source == "" {
-					source = "fsl"
-				}
-				fmt.Printf("  %s%s\033[0m %d:%d [%s] - %s\n",
-					severityColor,
-					severityLabel,
-					diag.StartLine,
-					diag.StartColumn,
-					source,
-					diag.Message,
-				)
-				lineText, caretText := formatDiagnosticLine(result.Lines, diag.StartLine, diag.StartColumn)
-				if lineText != "" {
-					fmt.Printf("  > %s\n", lineText)
-					if caretText != "" {
-						fmt.Printf("  > %s\n", caretText)
-					}
+		}
+		for _, diag := range result.Diagnostics {
+			if result.Valid && diag.Severity == parser.SeverityError {
+				continue
+			}
+			severityColor := getSeverityColor(diag.Severity)
+			severityLabel := getSeverityLabel(diag.Severity)
+			source := diag.Source
+			if source == "" {
+				source = "fsl"
+			}
+			fmt.Printf("  %s%s\033[0m %d:%d [%s] - %s\n",
+				severityColor,
+				severityLabel,
+				diag.StartLine,
+				diag.StartColumn,
+				source,
+				diag.Message,
+			)
+			lineText, caretText := formatDiagnosticLine(result.Lines, diag.StartLine, diag.StartColumn)
+			if lineText != "" {
+				fmt.Printf("  > %s\n", lineText)
+				if caretText != "" {
+					fmt.Printf("  > %s\n", caretText)
 				}
 			}
 		}
