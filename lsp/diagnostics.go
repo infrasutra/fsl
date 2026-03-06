@@ -2,14 +2,16 @@ package lsp
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/infrasutra/fsl/parser"
 )
 
 // GetDiagnostics returns LSP diagnostics for a document
-func GetDiagnostics(doc *Document) []Diagnostic {
-	result := doc.GetParseResult()
+func GetDiagnostics(doc *Document, workspaceDocs []*Document) []Diagnostic {
+	externalTypes := collectExternalTypes(doc, workspaceDocs)
+	result := parser.ParseWithDiagnosticsAndExternalTypes(doc.Content, externalTypes)
 	if result == nil {
 		return []Diagnostic{}
 	}
@@ -19,7 +21,7 @@ func GetDiagnostics(doc *Document) []Diagnostic {
 		diagnostics = append(diagnostics, ConvertDiagnostic(d))
 	}
 
-	schema := doc.GetSchema()
+	schema := result.Schema
 	if schema == nil {
 		return diagnostics
 	}
@@ -66,6 +68,29 @@ func GetDiagnostics(doc *Document) []Diagnostic {
 	}
 
 	return diagnostics
+}
+
+func collectExternalTypes(current *Document, docs []*Document) []string {
+	types := make(map[string]struct{})
+	for _, doc := range docs {
+		if doc == nil || doc.URI == current.URI {
+			continue
+		}
+		schema := doc.GetSchema()
+		if schema == nil {
+			continue
+		}
+		for _, typeDef := range schema.Types {
+			types[typeDef.Name] = struct{}{}
+		}
+	}
+
+	externalTypes := make([]string, 0, len(types))
+	for typeName := range types {
+		externalTypes = append(externalTypes, typeName)
+	}
+	sort.Strings(externalTypes)
+	return externalTypes
 }
 
 func mapLintSeverity(s parser.LintSeverity) DiagnosticSeverity {

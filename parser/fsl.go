@@ -42,6 +42,10 @@ type DiagnosticsResult struct {
 
 // ParseWithDiagnostics parses FSL and returns structured diagnostics for IDE integration
 func ParseWithDiagnostics(source string) *DiagnosticsResult {
+	return ParseWithDiagnosticsAndExternalTypes(source, nil)
+}
+
+func ParseWithDiagnosticsAndExternalTypes(source string, externalTypes []string) *DiagnosticsResult {
 	result := &DiagnosticsResult{
 		Valid:       true,
 		Diagnostics: []Diagnostic{},
@@ -62,7 +66,7 @@ func ParseWithDiagnostics(source string) *DiagnosticsResult {
 	result.Schema = schema
 
 	// Validate the schema
-	validator := NewValidator(schema)
+	validator := NewValidatorWithExternalTypes(schema, externalTypes)
 	validationErrors := validator.Validate()
 
 	if len(validationErrors) > 0 {

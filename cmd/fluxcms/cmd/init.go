@@ -110,6 +110,8 @@ output:
   typescript:
     directory: "./sdk"
     client: "fetch"  # Options: fetch, axios
+  go:
+    directory: "./pkg/client"
 `
 	configPath := filepath.Join(projectDir, ".fluxcms.yaml")
 	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
@@ -135,6 +137,12 @@ fsl validate ./schemas/
 fluxcms generate typescript --schema=./schemas/ --output=./sdk/
 ` + "```" + `
 
+### Generate Go SDK
+
+` + "```bash" + `
+fluxcms generate go --schema=./schemas/ --output=./pkg/client
+` + "```" + `
+
 ### Check for Breaking Changes
 
 ` + "```bash" + `
@@ -148,6 +156,7 @@ fsl migrate check --schema=./schemas/
 ├── schemas/           # FSL schema files
 │   └── example.fsl    # Example schema
 ├── sdk/               # Generated TypeScript SDK (after generation)
+├── pkg/client/        # Generated Go SDK (after generation)
 ├── .fluxcms.yaml          # Project configuration
 └── README.md          # This file
 ` + "```" + `

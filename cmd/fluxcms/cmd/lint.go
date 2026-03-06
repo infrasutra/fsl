@@ -38,20 +38,30 @@ func runLint(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	lintCfg := buildLintConfig()
-
 	hasParseErrors := false
 	totalFindings := 0
 
+	fileContents := make(map[string]string, len(files))
 	for _, file := range files {
-		content, err := os.ReadFile(file)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error reading %s: %v\n", file, err)
+		content, readErr := os.ReadFile(file)
+		if readErr != nil {
+			fmt.Fprintf(os.Stderr, "error reading %s: %v\n", file, readErr)
 			hasParseErrors = true
 			continue
 		}
+		fileContents[file] = string(content)
+	}
 
-		diagResult := parser.ParseWithDiagnostics(string(content))
+	diagResults := parseFilesWithWorkspaceTypes(fileContents)
+
+	lintCfg := buildLintConfig()
+
+	for _, file := range files {
+		diagResult, ok := diagResults[file]
+		if !ok {
+			continue
+		}
+
 		if !diagResult.Valid {
 			hasParseErrors = true
 			fmt.Printf("\033[31m✗\033[0m %s (parse errors)\n", file)

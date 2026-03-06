@@ -9,6 +9,8 @@ import (
 
 	"github.com/infrasutra/fsl/parser"
 	"github.com/infrasutra/fsl/sdk"
+	gosdk "github.com/infrasutra/fsl/sdk/go"
+	"github.com/infrasutra/fsl/sdk/openapi"
 	"github.com/infrasutra/fsl/sdk/python"
 	"github.com/infrasutra/fsl/sdk/typescript"
 	"github.com/spf13/cobra"
@@ -20,6 +22,7 @@ var (
 	generateClient         string
 	generateTarget         string
 	generateWorkspaceAPIID string
+	generateExportFormat   string
 )
 
 var generateCmd = &cobra.Command{
@@ -30,10 +33,14 @@ var generateCmd = &cobra.Command{
 Targets:
   typescript  Generate TypeScript SDK
   python      Generate Python SDK
+  go          Generate Go SDK
+  openapi     Generate OpenAPI or JSON Schema definitions
 
 Examples:
   fluxcms generate typescript --schema=./schemas/ --output=./sdk/
-  fluxcms generate python --schema=./schemas/ --output=./sdk/`,
+  fluxcms generate python --schema=./schemas/ --output=./sdk/
+  fluxcms generate go --schema=./schemas/ --output=./pkg/client
+  fluxcms generate openapi --schema=./schemas/ --output=./definitions/`,
 }
 
 var generateTypescriptCmd = &cobra.Command{
@@ -60,10 +67,36 @@ The generated SDK includes:
 	RunE: runGeneratePython,
 }
 
+var generateGoCmd = &cobra.Command{
+	Use:   "go",
+	Short: "Generate Go SDK",
+	Long: `Generate a Go SDK from FSL schemas.
+
+The generated SDK includes:
+  - Go structs for all schema types
+  - net/http based API client for content delivery
+  - JSON tags for wire compatibility`,
+	RunE: runGenerateGo,
+}
+
+var generateOpenAPICmd = &cobra.Command{
+	Use:     "openapi",
+	Aliases: []string{"jsonschema"},
+	Short:   "Generate OpenAPI or JSON Schema definitions",
+	Long: `Generate standard OpenAPI 3.0 or JSON Schema definitions from FSL schemas.
+
+Formats:
+  openapi    OpenAPI 3.0.3 document
+  jsonschema JSON Schema draft 2020-12 document`,
+	RunE: runGenerateOpenAPI,
+}
+
 func init() {
 	rootCmd.AddCommand(generateCmd)
 	generateCmd.AddCommand(generateTypescriptCmd)
 	generateCmd.AddCommand(generatePythonCmd)
+	generateCmd.AddCommand(generateGoCmd)
+	generateCmd.AddCommand(generateOpenAPICmd)
 
 	generateCmd.PersistentFlags().StringVar(&generateSchemaPath, "schema", "", "Schema file or directory")
 	generateCmd.PersistentFlags().StringVar(&generateOutputPath, "output", "", "Output directory")
@@ -72,6 +105,9 @@ func init() {
 	generateTypescriptCmd.Flags().StringVar(&generateWorkspaceAPIID, "workspace-api-id", "", "Workspace API ID for content SDK default")
 	generatePythonCmd.Flags().StringVar(&generateTarget, "target", "content", "API target: content or cms")
 	generatePythonCmd.Flags().StringVar(&generateWorkspaceAPIID, "workspace-api-id", "", "Workspace API ID for content SDK default")
+	generateGoCmd.Flags().StringVar(&generateTarget, "target", "content", "API target: content or cms")
+	generateGoCmd.Flags().StringVar(&generateWorkspaceAPIID, "workspace-api-id", "", "Workspace API ID for content SDK default")
+	generateOpenAPICmd.Flags().StringVar(&generateExportFormat, "format", "openapi", "Export format: openapi or jsonschema")
 }
 
 // generateParams holds the configuration for the shared generate logic.
@@ -95,14 +131,7 @@ func runGenerate(params generateParams) error {
 		return fmt.Errorf("invalid target %q: must be content or cms", target)
 	}
 
-	schemaPath := generateSchemaPath
-	if schemaPath == "" {
-		if cfg := GetConfig(); cfg != nil && cfg.Schemas.Directory != "" {
-			schemaPath = cfg.Schemas.Directory
-		} else {
-			schemaPath = GetSchemaDirectory()
-		}
-	}
+	schemaPath := resolvedSchemaPath()
 
 	outputPath := generateOutputPath
 	if outputPath == "" {
@@ -113,36 +142,9 @@ func runGenerate(params generateParams) error {
 		}
 	}
 
-	files, err := collectFSLFiles([]string{schemaPath})
+	compiledSchemas, err := loadCompiledSchemas(schemaPath)
 	if err != nil {
 		return err
-	}
-
-	compiledSchemas := make([]*parser.CompiledSchema, 0)
-	for _, file := range files {
-		content, err := os.ReadFile(file)
-		if err != nil {
-			return fmt.Errorf("cannot read %s: %w", file, err)
-		}
-
-		result := parser.ParseWithDiagnostics(string(content))
-		if !result.Valid {
-			message := "unknown error"
-			if len(result.Diagnostics) > 0 {
-				message = result.Diagnostics[0].Message
-			}
-			return fmt.Errorf("schema validation failed in %s: %s", file, message)
-		}
-
-		for _, typeDef := range result.Schema.Types {
-			derived := deriveApiID(typeDef.Name)
-			compiled, err := parser.Compile(result.Schema, typeDef.Name, derived, false)
-			if err != nil {
-				return fmt.Errorf("failed to compile schema %s in %s: %w", typeDef.Name, file, err)
-			}
-			compiled.ApiID = derived
-			compiledSchemas = append(compiledSchemas, compiled)
-		}
 	}
 
 	if err := os.MkdirAll(outputPath, 0o755); err != nil {
@@ -229,6 +231,129 @@ func runGeneratePython(cmd *cobra.Command, args []string) error {
 			TargetAPI: generateTarget,
 		},
 	})
+}
+
+func runGenerateGo(cmd *cobra.Command, args []string) error {
+	var outputConfig string
+	if cfg := GetConfig(); cfg != nil && cfg.Output.Go.Directory != "" {
+		outputConfig = cfg.Output.Go.Directory
+	}
+
+	packageName := "client"
+	if outputDir := generateOutputPath; outputDir != "" {
+		packageName = filepath.Base(outputDir)
+	} else if outputConfig != "" {
+		packageName = filepath.Base(outputConfig)
+	}
+
+	return runGenerate(generateParams{
+		language:      "Go",
+		outputDefault: "./pkg/client",
+		outputConfig:  outputConfig,
+		generator:     gosdk.New(),
+		genConfig: sdk.GeneratorConfig{
+			PackageName: packageName,
+			TargetAPI:   generateTarget,
+		},
+	})
+}
+
+func runGenerateOpenAPI(cmd *cobra.Command, args []string) error {
+	schemaPath := resolvedSchemaPath()
+
+	outputPath := generateOutputPath
+	if outputPath == "" {
+		outputPath = "./sdk-openapi"
+	}
+
+	compiledSchemas, err := loadCompiledSchemas(schemaPath)
+	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(outputPath, 0o755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
+	}
+
+	generated, err := openapi.New().Generate(compiledSchemas, sdk.GeneratorConfig{ExportFormat: generateExportFormat})
+	if err != nil {
+		return fmt.Errorf("failed to generate schema definitions: %w", err)
+	}
+
+	fileNames := make([]string, 0, len(generated.Files))
+	for name := range generated.Files {
+		fileNames = append(fileNames, name)
+	}
+	sort.Strings(fileNames)
+
+	for _, name := range fileNames {
+		content := generated.Files[name]
+		filePath := filepath.Join(outputPath, name)
+		if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
+			return fmt.Errorf("failed to write %s: %w", name, err)
+		}
+	}
+
+	fmt.Printf("\033[32m✓\033[0m Generated %s definitions in %s\n", strings.ToUpper(generateExportFormat), outputPath)
+	fmt.Printf("  - schemas: %d\n", len(compiledSchemas))
+	fmt.Printf("  - files (%d): %s\n", len(fileNames), strings.Join(fileNames, ", "))
+
+	return nil
+}
+
+func resolvedSchemaPath() string {
+	schemaPath := generateSchemaPath
+	if schemaPath == "" {
+		if cfg := GetConfig(); cfg != nil && cfg.Schemas.Directory != "" {
+			schemaPath = cfg.Schemas.Directory
+		} else {
+			schemaPath = GetSchemaDirectory()
+		}
+	}
+
+	return schemaPath
+}
+
+func loadCompiledSchemas(schemaPath string) ([]*parser.CompiledSchema, error) {
+	files, err := collectFSLFiles([]string{schemaPath})
+	if err != nil {
+		return nil, err
+	}
+
+	fileContents := make(map[string]string, len(files))
+	for _, file := range files {
+		content, readErr := os.ReadFile(file)
+		if readErr != nil {
+			return nil, fmt.Errorf("cannot read %s: %w", file, readErr)
+		}
+		fileContents[file] = string(content)
+	}
+
+	results := parseFilesWithWorkspaceTypes(fileContents)
+
+	compiledSchemas := make([]*parser.CompiledSchema, 0)
+	for _, file := range files {
+		result := results[file]
+		if !result.Valid {
+			message := "unknown error"
+			if len(result.Diagnostics) > 0 {
+				message = result.Diagnostics[0].Message
+			}
+			return nil, fmt.Errorf("schema validation failed in %s: %s", file, message)
+		}
+
+		for _, typeDef := range result.Schema.Types {
+			derived := deriveApiID(typeDef.Name)
+			compiled, compileErr := parser.Compile(result.Schema, typeDef.Name, derived, false)
+			if compileErr != nil {
+				return nil, fmt.Errorf("failed to compile schema %s in %s: %w", typeDef.Name, file, compileErr)
+			}
+			compiled.ApiID = derived
+			compiledSchemas = append(compiledSchemas, compiled)
+		}
+	}
+
+	return compiledSchemas, nil
 }
 
 func deriveApiID(name string) string {

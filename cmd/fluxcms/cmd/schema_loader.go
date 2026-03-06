@@ -49,14 +49,20 @@ func loadSchemas(path string) ([]*parser.Schema, error) {
 		return nil, err
 	}
 
+	fileContents := make(map[string]string, len(files))
+	for _, file := range files {
+		content, readErr := os.ReadFile(file)
+		if readErr != nil {
+			return nil, fmt.Errorf("cannot read %s: %w", file, readErr)
+		}
+		fileContents[file] = string(content)
+	}
+
+	results := parseFilesWithWorkspaceTypes(fileContents)
+
 	var schemas []*parser.Schema
 	for _, file := range files {
-		content, err := os.ReadFile(file)
-		if err != nil {
-			return nil, fmt.Errorf("cannot read %s: %w", file, err)
-		}
-
-		result := parser.ParseWithDiagnostics(string(content))
+		result := results[file]
 		if !result.Valid {
 			message := "unknown error"
 			if len(result.Diagnostics) > 0 {

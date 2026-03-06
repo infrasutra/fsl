@@ -32,6 +32,9 @@ type Config struct {
 		Python struct {
 			Directory string `yaml:"directory"`
 		} `yaml:"python"`
+		Go struct {
+			Directory string `yaml:"directory"`
+		} `yaml:"go"`
 	} `yaml:"output"`
 	Lint struct {
 		NamingConvention      *bool `yaml:"naming_convention"`

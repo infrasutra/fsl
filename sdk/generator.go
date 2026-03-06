@@ -45,6 +45,10 @@ type GeneratorConfig struct {
 
 	// StrictNullChecks enables strict null checking in TypeScript
 	StrictNullChecks bool
+
+	// ExportFormat selects export format for schema generators
+	// (for example: "openapi" or "jsonschema")
+	ExportFormat string
 }
 
 // GeneratedSDK represents the output of code generation

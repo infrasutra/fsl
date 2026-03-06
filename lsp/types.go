@@ -426,6 +426,14 @@ type DocumentFormattingClientCapabilities struct {
 	DynamicRegistration bool `json:"dynamicRegistration,omitempty"`
 }
 
+type FormattingOptions struct {
+	TabSize                int   `json:"tabSize"`
+	InsertSpaces           bool  `json:"insertSpaces"`
+	TrimTrailingWhitespace *bool `json:"trimTrailingWhitespace,omitempty"`
+	InsertFinalNewline     *bool `json:"insertFinalNewline,omitempty"`
+	TrimFinalNewlines      *bool `json:"trimFinalNewlines,omitempty"`
+}
+
 // DefinitionClientCapabilities represents definition capabilities
 type DefinitionClientCapabilities struct {
 	DynamicRegistration bool `json:"dynamicRegistration,omitempty"`
@@ -674,4 +682,9 @@ type ReferenceContext struct {
 // RenameOptions represents rename server options
 type RenameOptions struct {
 	PrepareProvider bool `json:"prepareProvider,omitempty"`
+}
+
+type DocumentFormattingParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Options      FormattingOptions      `json:"options"`
 }

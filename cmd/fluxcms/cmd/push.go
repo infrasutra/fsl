@@ -69,6 +69,7 @@ func runPush(cmd *cobra.Command, args []string) error {
 	entries := make([]fileEntry, 0, len(files))
 	hasErrors := false
 	hasWarnings := false
+	fileContents := make(map[string]string, len(files))
 
 	for _, f := range files {
 		content, err := os.ReadFile(f)
@@ -77,8 +78,18 @@ func runPush(cmd *cobra.Command, args []string) error {
 			hasErrors = true
 			continue
 		}
+		fileContents[f] = string(content)
+	}
 
-		result := parser.ParseWithDiagnostics(string(content))
+	results := parseFilesWithWorkspaceTypes(fileContents)
+
+	for _, f := range files {
+		content, ok := fileContents[f]
+		if !ok {
+			continue
+		}
+
+		result := results[f]
 
 		for _, diag := range result.Diagnostics {
 			if diag.Severity == parser.SeverityError {
@@ -110,7 +121,7 @@ func runPush(cmd *cobra.Command, args []string) error {
 
 		entries = append(entries, fileEntry{
 			path:    f,
-			content: string(content),
+			content: content,
 			result:  result,
 		})
 	}

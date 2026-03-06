@@ -39,6 +39,37 @@ func TestCLI_Help(t *testing.T) {
 	assert.Contains(t, output, "migrate")
 	assert.Contains(t, output, "template")
 	assert.Contains(t, output, "init")
+	assert.Contains(t, output, "format")
+}
+
+func TestCLI_FormatFile(t *testing.T) {
+	bin := buildCLI(t)
+
+	dir := t.TempDir()
+	fslFile := filepath.Join(dir, "schema.fsl")
+	err := os.WriteFile(fslFile, []byte(`type Article{title:String!@maxLength(200)@minLength(1)}`), 0o644)
+	require.NoError(t, err)
+
+	out, err := exec.Command(bin, "format", fslFile).CombinedOutput()
+	require.NoError(t, err, "format should succeed: %s", string(out))
+
+	formatted, err := os.ReadFile(fslFile)
+	require.NoError(t, err)
+	assert.Equal(t, "type Article {\n  title: String! @minLength(1) @maxLength(200)\n}\n", string(formatted))
+}
+
+func TestCLI_FormatCheck(t *testing.T) {
+	bin := buildCLI(t)
+
+	dir := t.TempDir()
+	fslFile := filepath.Join(dir, "schema.fsl")
+	err := os.WriteFile(fslFile, []byte(`type Article{title:String!@maxLength(200)@minLength(1)}`), 0o644)
+	require.NoError(t, err)
+
+	out, err := exec.Command(bin, "format", "--check", fslFile).CombinedOutput()
+	assert.Error(t, err)
+	assert.Contains(t, string(out), "would format")
+	assert.Contains(t, string(out), "need formatting")
 }
 
 func TestCLI_ValidateValid(t *testing.T) {
@@ -91,6 +122,26 @@ func TestCLI_ValidateDirectory(t *testing.T) {
 	out, err := exec.Command(bin, "validate", dir).CombinedOutput()
 	require.NoError(t, err, "validate directory should succeed: %s", string(out))
 	assert.Contains(t, string(out), "✓")
+}
+
+func TestCLI_ValidateDirectoryCrossFileRelations(t *testing.T) {
+	bin := buildCLI(t)
+
+	dir := t.TempDir()
+	err := os.WriteFile(filepath.Join(dir, "article.fsl"), []byte(`type Article {
+  title: String!
+  author: Author! @relation
+}`), 0o644)
+	require.NoError(t, err)
+
+	err = os.WriteFile(filepath.Join(dir, "author.fsl"), []byte(`type Author {
+  name: String!
+}`), 0o644)
+	require.NoError(t, err)
+
+	out, err := exec.Command(bin, "validate", dir).CombinedOutput()
+	require.NoError(t, err, "validate cross-file relations should succeed: %s", string(out))
+	assert.Contains(t, string(out), "Validation passed")
 }
 
 func TestCLI_ValidateJSON(t *testing.T) {
@@ -158,6 +209,63 @@ func TestCLI_GenerateTypescript(t *testing.T) {
 		}
 	}
 	assert.True(t, hasTS, "should generate at least one .ts file")
+}
+
+func TestCLI_GenerateOpenAPI(t *testing.T) {
+	bin := buildCLI(t)
+
+	dir := t.TempDir()
+	fslFile := filepath.Join(dir, "schema.fsl")
+	err := os.WriteFile(fslFile, []byte(`type Product {
+  name: String! @maxLength(200)
+  price: Float! @min(0)
+}
+`), 0o644)
+	require.NoError(t, err)
+
+	outDir := filepath.Join(dir, "definitions")
+	out, err := exec.Command(bin, "generate", "openapi",
+		"--schema", fslFile,
+		"--output", outDir,
+	).CombinedOutput()
+	require.NoError(t, err, "generate openapi should succeed: %s", string(out))
+
+	openapiFile := filepath.Join(outDir, "openapi.json")
+	assert.FileExists(t, openapiFile)
+
+	content, err := os.ReadFile(openapiFile)
+	require.NoError(t, err)
+	assert.Contains(t, string(content), `"openapi": "3.0.3"`)
+	assert.Contains(t, string(content), `"Product"`)
+}
+
+func TestCLI_GenerateJSONSchema(t *testing.T) {
+	bin := buildCLI(t)
+
+	dir := t.TempDir()
+	fslFile := filepath.Join(dir, "schema.fsl")
+	err := os.WriteFile(fslFile, []byte(`type Product {
+  name: String!
+  tags: [String] @minItems(1)
+}
+`), 0o644)
+	require.NoError(t, err)
+
+	outDir := filepath.Join(dir, "definitions")
+	out, err := exec.Command(bin, "generate", "openapi",
+		"--format", "jsonschema",
+		"--schema", fslFile,
+		"--output", outDir,
+	).CombinedOutput()
+	require.NoError(t, err, "generate jsonschema should succeed: %s", string(out))
+
+	jsonSchemaFile := filepath.Join(outDir, "jsonschema.json")
+	assert.FileExists(t, jsonSchemaFile)
+
+	content, err := os.ReadFile(jsonSchemaFile)
+	require.NoError(t, err)
+	assert.Contains(t, string(content), `"$schema": "https://json-schema.org/draft/2020-12/schema"`)
+	assert.Contains(t, string(content), `"$defs"`)
 }
 
 func TestCLI_MigratePreview(t *testing.T) {
