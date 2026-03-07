@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestFindConfigFilePrefersFSLConfig(t *testing.T) {
+func TestFindConfigFilePrefersYAMLOverYML(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, ".fluxcms.yaml"), []byte("version: \"1\"\n"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(root, ".fluxcms.yaml"), []byte("version: \"1\"\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".fluxcms.yml"), []byte("version: \"1\"\n"), 0o644))
 
 	nested := filepath.Join(root, "a", "b")
 	require.NoError(t, os.MkdirAll(nested, 0o755))

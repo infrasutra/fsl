@@ -128,7 +128,7 @@ This project uses [FSL](https://github.com/infrasutra/fsl) for schema-first mode
 ### Validate Schemas
 
 ` + "```bash" + `
-fsl validate ./schemas/
+fluxcms validate ./schemas/
 ` + "```" + `
 
 ### Generate TypeScript SDK
@@ -146,7 +146,7 @@ fluxcms generate go --schema=./schemas/ --output=./pkg/client
 ### Check for Breaking Changes
 
 ` + "```bash" + `
-fsl migrate check --schema=./schemas/
+fluxcms migrate check --schema=./schemas/
 ` + "```" + `
 
 ## Project Structure
@@ -186,7 +186,7 @@ Install the FSL extension for your editor:
 Start the LSP server:
 
 ` + "```bash" + `
-fsl lsp --stdio
+fluxcms lsp --stdio
 ` + "```" + `
 `
 	readmePath := filepath.Join(projectDir, "README.md")
@@ -216,7 +216,7 @@ sdk/
 	if projectDir != "." {
 		fmt.Printf("  cd %s\n", projectDir)
 	}
-	fmt.Println("  fsl validate ./schemas/  # Validate schemas")
+	fmt.Println("  fluxcms validate ./schemas/  # Validate schemas")
 	fmt.Println("  fluxcms generate typescript  # Generate SDK")
 	fmt.Println()
 

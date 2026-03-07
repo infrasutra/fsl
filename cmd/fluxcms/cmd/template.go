@@ -48,7 +48,6 @@ Checks:
 }
 
 var templateConvertCmd = &cobra.Command{
-
 	Use:   "convert <input> <output>",
 	Short: "Convert template between formats",
 	Long: `Convert a template file between different formats.
@@ -87,7 +86,7 @@ func runTemplateList(cmd *cobra.Command, args []string) error {
 	info, err := os.Stat(templatePath)
 	if os.IsNotExist(err) {
 		fmt.Printf("Templates directory '%s' does not exist.\n", templatePath)
-		fmt.Println("\nTo create templates, use: fsl template create <file>")
+		fmt.Println("\nTo create templates, use: fluxcms template create <file>")
 		return nil
 	}
 	if err != nil {

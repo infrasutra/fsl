@@ -31,10 +31,10 @@ The LSP server provides:
 
 Examples:
   # Start with stdio transport (default, for editors)
-  fsl lsp --stdio
+  fluxcms lsp --stdio
 
   # Start with socket transport
-  fsl lsp --socket=:9999`,
+  fluxcms lsp --socket=:9999`,
 	RunE: runLSP,
 }
 
