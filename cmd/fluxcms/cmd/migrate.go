@@ -43,7 +43,7 @@ var migrateGenerateCmd = &cobra.Command{
 	Long: `Generate a migration file based on schema changes.
 
 Examples:
-  fsl migrate generate --schema=./schemas/ --name="add_author_field"`,
+  fluxcms migrate generate --schema=./schemas/ --name="add_author_field"`,
 	RunE: runMigrateGenerate,
 }
 
@@ -53,7 +53,7 @@ var migratePreviewCmd = &cobra.Command{
 	Long: `Preview what migration would be generated without creating files.
 
 Examples:
-  fsl migrate preview --schema=./schemas/`,
+  fluxcms migrate preview --schema=./schemas/`,
 	RunE: runMigratePreview,
 }
 
@@ -63,7 +63,7 @@ var migrateCheckCmd = &cobra.Command{
 	Long: `Analyze schema changes and detect breaking changes.
 
 Examples:
-  fsl migrate check --schema=./schemas/`,
+  fluxcms migrate check --schema=./schemas/`,
 	RunE: runMigrateCheck,
 }
 
@@ -73,8 +73,8 @@ var migrateDiffCmd = &cobra.Command{
 	Long: `Compare two schema versions and show detailed changes.
 
 Examples:
-  fsl migrate diff --from=./schemas/v1 --to=./schemas/v2 --type=Post
-  fsl migrate diff --from=./schema.fsl --to=./schema-next.fsl --format=json`,
+  fluxcms migrate diff --from=./schemas/v1 --to=./schemas/v2 --type=Post
+  fluxcms migrate diff --from=./schema.fsl --to=./schema-next.fsl --format=json`,
 	RunE: runMigrateDiff,
 }
 
@@ -108,7 +108,7 @@ func getSchemaPath() (string, error) {
 	if config := GetConfig(); config != nil && config.Schemas.Directory != "" {
 		return config.Schemas.Directory, nil
 	}
-	return "", fmt.Errorf("no schema path specified (use --schema flag or set schemas.directory in .fsl.yaml)")
+	return "", fmt.Errorf("no schema path specified (use --schema flag or set schemas.directory in .fluxcms.yaml)")
 }
 
 // loadPreviousState reads the most recent migration file and extracts stored compiled schemas.
@@ -149,7 +149,7 @@ func loadPreviousState(migrationsDir string) (map[string]*parser.CompiledSchema,
 
 	if migration.SchemaState == nil {
 		fmt.Fprintf(os.Stderr, "\033[33m⚠\033[0m  Latest migration '%s' has no schema state (created before diff support).\n", latestFile)
-		fmt.Fprintf(os.Stderr, "   Run: fsl migrate generate --name=baseline --schema=<path> to establish state.\n")
+		fmt.Fprintf(os.Stderr, "   Run: fluxcms migrate generate --name=baseline --schema=<path> to establish state.\n")
 	}
 
 	return migration.SchemaState, nil

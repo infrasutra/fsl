@@ -17,9 +17,9 @@ Unlike validate, lint produces warnings and hints rather than hard errors.
 Exit code is 0 even when lint findings are reported (exit 1 only on parse errors).
 
 Examples:
-  fsl lint
-  fsl lint schema.fsl
-  fsl lint ./schemas/`,
+  fluxcms lint
+  fluxcms lint schema.fsl
+  fluxcms lint ./schemas/`,
 	RunE: runLint,
 }
 

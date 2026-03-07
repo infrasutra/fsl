@@ -20,13 +20,13 @@ var validateCmd = &cobra.Command{
 
 Examples:
   # Validate a single file
-  fsl validate schema.fsl
+  fluxcms validate schema.fsl
 
   # Validate all .fsl files in a directory
-  fsl validate ./schemas/
+  fluxcms validate ./schemas/
 
   # Output in JSON format
-  fsl validate schema.fsl --format=json`,
+  fluxcms validate schema.fsl --format=json`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: runValidate,
 }

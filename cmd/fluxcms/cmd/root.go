@@ -75,7 +75,7 @@ func Execute() error {
 func init() {
 	cobra.OnInitialize(initConfig)
 
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is .fsl.yaml)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is .fluxcms.yaml)")
 	rootCmd.SetVersionTemplate(fmt.Sprintf("fluxcms version %s (built %s)\n", Version, BuildDate))
 }
 
@@ -99,23 +99,23 @@ func initConfig() {
 
 func findConfigFile(dir string) string {
 	for {
-		configPath := filepath.Join(dir, ".fsl.yaml")
+		// Prefer .fluxcms.yaml (canonical), then legacy names for backward compat
+		configPath := filepath.Join(dir, ".fluxcms.yaml")
+		if _, err := os.Stat(configPath); err == nil {
+			return configPath
+		}
+
+		configPath = filepath.Join(dir, ".fluxcms.yml")
+		if _, err := os.Stat(configPath); err == nil {
+			return configPath
+		}
+
+		configPath = filepath.Join(dir, ".fsl.yaml")
 		if _, err := os.Stat(configPath); err == nil {
 			return configPath
 		}
 
 		configPath = filepath.Join(dir, ".fsl.yml")
-		if _, err := os.Stat(configPath); err == nil {
-			return configPath
-		}
-
-		configPath = filepath.Join(dir, ".fluxcms.yaml")
-		if _, err := os.Stat(configPath); err == nil {
-			return configPath
-		}
-
-		// Also check for .fluxcms.yml
-		configPath = filepath.Join(dir, ".fluxcms.yml")
 		if _, err := os.Stat(configPath); err == nil {
 			return configPath
 		}
