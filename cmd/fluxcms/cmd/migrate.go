@@ -3,8 +3,10 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -20,6 +22,7 @@ var (
 	migrateDiffFrom   string
 	migrateDiffTo     string
 	migrateDiffType   string
+	migrateDiffOutput string
 )
 
 var migrateCmd = &cobra.Command{
@@ -93,6 +96,7 @@ func init() {
 	migrateDiffCmd.Flags().StringVar(&migrateDiffFrom, "from", "", "Schema file or directory to diff from")
 	migrateDiffCmd.Flags().StringVar(&migrateDiffTo, "to", "", "Schema file or directory to diff to")
 	migrateDiffCmd.Flags().StringVar(&migrateDiffType, "type", "", "Schema type name to diff")
+	migrateDiffCmd.Flags().StringVar(&migrateDiffOutput, "output", "", "Write diff output to file instead of stdout")
 	migrateDiffCmd.MarkFlagRequired("from")
 	migrateDiffCmd.MarkFlagRequired("to")
 }
@@ -450,18 +454,28 @@ func runMigrateDiff(cmd *cobra.Command, args []string) error {
 
 	diff := parser.DiffSchemas(fromSchema, toSchema)
 
+	var out io.Writer = os.Stdout
+	if migrateDiffOutput != "" {
+		f, createErr := os.Create(migrateDiffOutput)
+		if createErr != nil {
+			return fmt.Errorf("failed to open output file: %w", createErr)
+		}
+		defer f.Close()
+		out = f
+	}
+
 	switch migrateFormat {
 	case "json":
-		enc := json.NewEncoder(os.Stdout)
+		enc := json.NewEncoder(out)
 		enc.SetIndent("", "  ")
 		return enc.Encode(schemaDiffOutput{Type: typeName, SchemaDiff: diff})
 	default:
-		fmt.Printf("Schema diff for type %s\n", typeName)
-		fmt.Println(diff.Summary())
+		fmt.Fprintf(out, "Schema diff for type %s\n", typeName)
+		fmt.Fprintln(out, diff.Summary())
 		if len(diff.Changes) == 0 {
 			return nil
 		}
-		fmt.Println()
+		fmt.Fprintln(out)
 
 		added := []parser.SchemaChange{}
 		removed := []parser.SchemaChange{}
@@ -487,20 +501,20 @@ func runMigrateDiff(cmd *cobra.Command, args []string) error {
 			return modified[i].Path < modified[j].Path
 		})
 
-		printSchemaDiffGroup("Added", added)
-		printSchemaDiffGroup("Removed", removed)
-		printSchemaDiffGroup("Modified", modified)
+		writeSchemaDiffGroup(out, "Added", added)
+		writeSchemaDiffGroup(out, "Removed", removed)
+		writeSchemaDiffGroup(out, "Modified", modified)
 		return nil
 	}
 }
 
-func printSchemaDiffGroup(label string, changes []parser.SchemaChange) {
+func writeSchemaDiffGroup(out io.Writer, label string, changes []parser.SchemaChange) {
 	if len(changes) == 0 {
 		return
 	}
-	fmt.Printf("%s (%d)\n", label, len(changes))
+	fmt.Fprintf(out, "%s (%d)\n", label, len(changes))
 	for _, change := range changes {
-		fmt.Printf("  - kind=%s path=%s breaking=%t message=%s\n", change.Kind, change.Path, change.Breaking, change.Message)
+		fmt.Fprintf(out, "  - kind=%s path=%s breaking=%t message=%s\n", change.Kind, change.Path, change.Breaking, change.Message)
 	}
 }
 
@@ -533,10 +547,10 @@ func compileSchemasByType(schemas []*parser.Schema) (map[string]*parser.Compiled
 
 func resolveDiffType(requested string, fromTypes, toTypes []string) (string, error) {
 	if requested != "" {
-		if !containsString(fromTypes, requested) {
+		if !slices.Contains(fromTypes, requested) {
 			return "", fmt.Errorf("type '%s' not found in --from schemas; available types: %s", requested, formatTypeList(fromTypes))
 		}
-		if !containsString(toTypes, requested) {
+		if !slices.Contains(toTypes, requested) {
 			return "", fmt.Errorf("type '%s' not found in --to schemas; available types: %s", requested, formatTypeList(toTypes))
 		}
 		return requested, nil
@@ -556,11 +570,3 @@ func formatTypeList(types []string) string {
 	return strings.Join(types, ", ")
 }
 
-func containsString(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
-}
