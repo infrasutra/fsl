@@ -186,17 +186,16 @@ func runGenerate(params generateParams) error {
 }
 
 func runGenerateTypescript(cmd *cobra.Command, args []string) error {
-	if generateClient != "fetch" {
-		return fmt.Errorf("only fetch client is supported right now")
-	}
-
-	// Determine client type from config
+	// Determine client type: flag takes precedence, then config file
 	client := generateClient
-	if cfg := GetConfig(); cfg != nil && cfg.Output.TypeScript.Client != "" && generateClient == "fetch" {
+	if cfg := GetConfig(); cfg != nil && cfg.Output.TypeScript.Client != "" && !cmd.Flags().Changed("client") {
 		client = cfg.Output.TypeScript.Client
 	}
-	if client != "fetch" {
-		return fmt.Errorf("only fetch client is supported right now")
+	switch client {
+	case "fetch", "axios":
+		// valid
+	default:
+		return fmt.Errorf("unsupported client %q: must be fetch or axios", client)
 	}
 
 	var outputConfig string
@@ -212,6 +211,7 @@ func runGenerateTypescript(cmd *cobra.Command, args []string) error {
 		genConfig: sdk.GeneratorConfig{
 			StrictNullChecks: true,
 			TargetAPI:        generateTarget,
+			Client:           client,
 		},
 	})
 }
