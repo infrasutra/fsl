@@ -1,7 +1,0 @@
-linters:
-  disable:
-    - errcheck
-
-linters-settings:
-  govet:
-    enable-all: false

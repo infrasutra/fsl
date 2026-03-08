@@ -7,14 +7,22 @@ build:
 	@echo "Building fluxcms CLI..."
 	@go build -o bin/fluxcms ./cmd/fluxcms
 
+# Lint the application
+lint:
+	@echo "Linting..."
+	@go vet ./...
+	@go tool staticcheck ./...
+
+# format the application
+fmt:
+	@echo "formating..."
+	@go tool gofumpt -w -extra .
+	@echo "format completed"
+
 # Run all tests
 test:
 	@echo "Testing..."
 	@go test ./... -v -race
-
-# Run linter
-lint:
-	@golangci-lint run ./...
 
 # Install CLI to $GOPATH/bin
 install:

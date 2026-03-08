@@ -50,7 +50,7 @@ const (
 
 	// Phase 2 field decorators
 	DecRelation  = "relation"  // relation to another type
-	DecSlices = "slices" // typed slice zone for dynamic page sections
+	DecSlices    = "slices"    // typed slice zone for dynamic page sections
 	DecMaxSize   = "maxSize"   // max file size in bytes
 	DecFormats   = "formats"   // allowed file formats
 	DecPrecision = "precision" // decimal precision for Float

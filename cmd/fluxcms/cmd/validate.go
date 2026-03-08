@@ -10,8 +10,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var validateFormat string
-var validateLint bool
+var (
+	validateFormat string
+	validateLint   bool
+)
 
 var validateCmd = &cobra.Command{
 	Use:   "validate [path]",

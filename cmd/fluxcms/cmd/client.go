@@ -116,7 +116,7 @@ func (c *apiClient) apiRequest(method, path string, body interface{}) ([]byte, e
 }
 
 // apiRequestRaw performs a request with a raw byte body (e.g. plain text schema content).
-func (c *apiClient) apiRequestRaw(method, path string, contentType string, body []byte) ([]byte, error) {
+func (c *apiClient) apiRequestRaw(method, path, contentType string, body []byte) ([]byte, error) {
 	var bodyReader io.Reader
 	if body != nil {
 		bodyReader = bytes.NewReader(body)

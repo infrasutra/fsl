@@ -157,7 +157,7 @@ func loadPreviousState(migrationsDir string) (map[string]*parser.CompiledSchema,
 
 // diffCurrentVsPrevious diffs all current compiled schemas against a previous state.
 // If previous is nil, all types are treated as new additions.
-func diffCurrentVsPrevious(current map[string]*parser.CompiledSchema, previous map[string]*parser.CompiledSchema) []parser.SchemaChange {
+func diffCurrentVsPrevious(current, previous map[string]*parser.CompiledSchema) []parser.SchemaChange {
 	var allChanges []parser.SchemaChange
 
 	if previous == nil {
@@ -569,4 +569,3 @@ func formatTypeList(types []string) string {
 	}
 	return strings.Join(types, ", ")
 }
-
