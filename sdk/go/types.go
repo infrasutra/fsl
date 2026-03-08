@@ -21,13 +21,6 @@ var TypeMapping = map[string]string{
 	"Enum":              "string",
 }
 
-func toUpper(b byte) byte {
-	if b >= 'a' && b <= 'z' {
-		return b - 32
-	}
-	return b
-}
-
 func toLower(b byte) byte {
 	if b >= 'A' && b <= 'Z' {
 		return b + 32

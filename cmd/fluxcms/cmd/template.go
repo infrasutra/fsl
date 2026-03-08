@@ -64,7 +64,6 @@ Supported conversions:
 var (
 	templatePath     string
 	templateCategory string
-	templateFormat   string
 )
 
 func init() {
