@@ -19,7 +19,7 @@ require (
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/spf13/pflag v1.0.9 // indirect
+	github.com/spf13/pflag v1.0.10 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20231108232855-2478ac86f678 // indirect
 	golang.org/x/mod v0.31.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
