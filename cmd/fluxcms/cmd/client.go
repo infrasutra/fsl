@@ -78,41 +78,16 @@ func newAPIClient() (*apiClient, error) {
 // apiRequest performs an HTTP request to the given path with an optional JSON body.
 // path should start with "/" (e.g. "/api/v1/schemas").
 func (c *apiClient) apiRequest(method, path string, body interface{}) ([]byte, error) {
-	var bodyReader io.Reader
+	var requestBody []byte
 	if body != nil {
 		data, err := json.Marshal(body)
 		if err != nil {
 			return nil, fmt.Errorf("failed to encode request body: %w", err)
 		}
-		bodyReader = bytes.NewReader(data)
+		requestBody = data
 	}
 
-	url := c.baseURL + path
-	req, err := http.NewRequest(method, url, bodyReader)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if err := handleAPIError(resp.StatusCode, respBody); err != nil {
-		return respBody, err
-	}
-
-	return respBody, nil
+	return c.apiRequestRaw(method, path, "application/json", requestBody)
 }
 
 // apiRequestRaw performs a request with a raw byte body (e.g. plain text schema content).

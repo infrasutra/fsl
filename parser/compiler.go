@@ -132,10 +132,7 @@ func Compile(schema *Schema, name, apiID string, singleton bool) (*CompiledSchem
 
 	// Compile named enums
 	for _, enumDef := range schema.Enums {
-		compiled.Enums = append(compiled.Enums, CompiledEnum{
-			Name:   enumDef.Name,
-			Values: enumDef.Values,
-		})
+		compiled.Enums = append(compiled.Enums, CompiledEnum(enumDef))
 	}
 
 	// Compile fields
