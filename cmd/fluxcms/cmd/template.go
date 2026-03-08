@@ -78,7 +78,6 @@ func init() {
 	// Flags for list
 	templateListCmd.Flags().StringVar(&templatePath, "path", "./templates", "Path to templates directory")
 	templateListCmd.Flags().StringVar(&templateCategory, "category", "", "Filter by category (content, commerce, marketing, system, custom)")
-
 }
 
 func runTemplateList(cmd *cobra.Command, args []string) error {
@@ -192,7 +191,6 @@ func runTemplateValidate(cmd *cobra.Command, args []string) error {
 
 	return nil
 }
-
 
 func runTemplateConvert(cmd *cobra.Command, args []string) error {
 	inputPath := args[0]

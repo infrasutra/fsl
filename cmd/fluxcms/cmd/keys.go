@@ -67,11 +67,11 @@ func init() {
 
 // apiKey represents one API key entry returned by the server.
 type apiKey struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Scope     string    `json:"scope"`
-	Prefix    string    `json:"prefix"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID         string     `json:"id"`
+	Name       string     `json:"name"`
+	Scope      string     `json:"scope"`
+	Prefix     string     `json:"prefix"`
+	CreatedAt  time.Time  `json:"createdAt"`
 	LastUsedAt *time.Time `json:"lastUsedAt"`
 }
 
@@ -173,12 +173,12 @@ func runKeysRevoke(cmd *cobra.Command, args []string) error {
 // printKeysTable renders a simple aligned table of API keys.
 func printKeysTable(keys []apiKey) {
 	const (
-		colID        = 24
-		colName      = 24
-		colScope     = 12
-		colPrefix    = 12
-		colCreated   = 20
-		colLastUsed  = 20
+		colID       = 24
+		colName     = 24
+		colScope    = 12
+		colPrefix   = 12
+		colCreated  = 20
+		colLastUsed = 20
 	)
 
 	header := fmt.Sprintf("%-*s  %-*s  %-*s  %-*s  %-*s  %s",

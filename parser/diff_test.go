@@ -474,8 +474,8 @@ func TestEqualStringSlices(t *testing.T) {
 func TestHasRemovedValues(t *testing.T) {
 	assert.False(t, hasRemovedValues([]string{"a", "b"}, []string{"a", "b", "c"})) // only added
 	assert.True(t, hasRemovedValues([]string{"a", "b", "c"}, []string{"a", "b"}))  // c removed
-	assert.False(t, hasRemovedValues(nil, []string{"a"}))                           // nothing from → nothing removed
-	assert.True(t, hasRemovedValues([]string{"a"}, nil))                            // a removed
+	assert.False(t, hasRemovedValues(nil, []string{"a"}))                          // nothing from → nothing removed
+	assert.True(t, hasRemovedValues([]string{"a"}, nil))                           // a removed
 }
 
 // ── helper: hasDefault ────────────────────────────────────────────────────
