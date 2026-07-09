@@ -89,12 +89,27 @@ func TestHandler_LifecycleNotifications(t *testing.T) {
 }
 
 func TestHandler_LifecycleNotifications_MalformedParamsIgnored(t *testing.T) {
-	handler, _ := newTestHandler()
-	// None of these should panic on malformed JSON; they should just no-op.
+	var out bytes.Buffer
+	server := &Server{documents: NewDocumentStore(), writer: &out}
+	handler := NewHandler(server)
+
+	// Seed a real document so didChange/didClose have existing state to (not) mutate.
+	server.GetDocuments().Open("file:///a.fsl", "type A { x: String! }", 1)
+
 	handler.handleNotification("textDocument/didOpen", json.RawMessage(`not json`))
+	assert.Len(t, server.GetDocuments().All(), 1, "malformed didOpen must not create a document")
+
 	handler.handleNotification("textDocument/didChange", json.RawMessage(`not json`))
+	doc := server.GetDocuments().Get("file:///a.fsl")
+	require.NotNil(t, doc)
+	assert.Equal(t, "type A { x: String! }", doc.Content, "malformed didChange must not mutate the document")
+	assert.Equal(t, 1, doc.Version, "malformed didChange must not bump the version")
+
 	handler.handleNotification("textDocument/didClose", json.RawMessage(`not json`))
+	assert.NotNil(t, server.GetDocuments().Get("file:///a.fsl"), "malformed didClose must not remove the document")
+
 	handler.handleNotification("textDocument/didSave", json.RawMessage(`not json`))
+	assert.Empty(t, out.Bytes(), "malformed didSave must not trigger a publishDiagnostics notification")
 }
 
 func TestHandler_HandleDidChange_NoContentChangesIsNoop(t *testing.T) {
@@ -296,7 +311,11 @@ func TestHandler_HandleRename(t *testing.T) {
 }
 
 func TestHandler_PublishDiagnostics_MissingDocumentNoop(t *testing.T) {
-	handler, _ := newTestHandler()
-	// Should return early without attempting to publish anything for a missing doc.
+	var out bytes.Buffer
+	server := &Server{documents: NewDocumentStore(), writer: &out}
+	handler := NewHandler(server)
+
 	handler.publishDiagnostics("file:///missing.fsl")
+
+	assert.Empty(t, out.Bytes(), "publishDiagnostics must not write a notification for an unknown document")
 }

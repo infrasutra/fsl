@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -174,6 +175,59 @@ func TestServer_Run_ReadErrorPropagates(t *testing.T) {
 	server := NewServer(strings.NewReader("Content-Length: notanumber\r\n\r\n"), &bytes.Buffer{})
 	err := server.Run(context.Background())
 	assert.ErrorContains(t, err, "error reading message")
+}
+
+// TestServer_Run_ConcurrentPipeRoundTrip exercises the full concurrency path: a live
+// server goroutine reading/writing over one io.Pipe pair per direction, driven by a
+// client that frames real requests, reads the framed responses back, and then shuts
+// the server down cleanly via the standard shutdown/exit handshake.
+func TestServer_Run_ConcurrentPipeRoundTrip(t *testing.T) {
+	clientToServerR, clientToServerW := io.Pipe()
+	serverToClientR, serverToClientW := io.Pipe()
+	defer clientToServerW.Close()
+	defer serverToClientR.Close()
+
+	server := NewServer(clientToServerR, serverToClientW)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	runDone := make(chan error, 1)
+	go func() { runDone <- server.Run(ctx) }()
+
+	// A throwaway Server value lets the test reuse the exact framing logic under
+	// test (readMessage) to decode responses coming back from the live server.
+	client := &Server{reader: bufio.NewReader(serverToClientR)}
+
+	writeFramed := func(payload string) {
+		t.Helper()
+		_, err := clientToServerW.Write([]byte(encodeMessage(t, payload)))
+		require.NoError(t, err)
+	}
+
+	// Request 1: initialize.
+	writeFramed(`{"jsonrpc":"2.0","id":1,"method":"initialize"}`)
+	resp1, err := client.readMessage()
+	require.NoError(t, err)
+	require.Nil(t, resp1.Error)
+	assert.Contains(t, string(resp1.Result), "serverInfo")
+
+	// Request 2: shutdown, per the LSP spec this should succeed with a null result
+	// while leaving the connection open until "exit" is received.
+	writeFramed(`{"jsonrpc":"2.0","id":2,"method":"shutdown"}`)
+	resp2, err := client.readMessage()
+	require.NoError(t, err)
+	require.Nil(t, resp2.Error)
+
+	// Notification: exit. No response is expected; this should make Run() return.
+	writeFramed(`{"jsonrpc":"2.0","method":"exit"}`)
+
+	select {
+	case runErr := <-runDone:
+		assert.NoError(t, runErr)
+	case <-time.After(2 * time.Second):
+		t.Fatal("server.Run did not return after exit notification")
+	}
 }
 
 func TestRunStdio(t *testing.T) {
