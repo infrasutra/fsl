@@ -63,7 +63,7 @@ func TestGenerateCMSClientPaths(t *testing.T) {
 		t.Fatalf("client.ts not generated")
 	}
 
-	expectedList := "/api/v1/cms/projects/${this.projectId}/schemas/11111111-1111-1111-1111-111111111111/documents"
+	expectedList := "/api/v1/projects/${this.projectId}/schemas/11111111-1111-1111-1111-111111111111/documents"
 	if !strings.Contains(client, expectedList) {
 		t.Fatalf("client.ts missing CMS list path: %s", expectedList)
 	}
@@ -104,12 +104,12 @@ func TestGenerateContentClientPaths(t *testing.T) {
 		t.Fatalf("client.ts not generated")
 	}
 
-	expectedList := "/api/v1/content/${this.workspaceApiId}/post"
+	expectedList := "/api/v1/content/post"
 	if !strings.Contains(client, expectedList) {
 		t.Fatalf("client.ts missing content list path: %s", expectedList)
 	}
 
-	if !strings.Contains(client, "/api/v1/content/${this.workspaceApiId}/post/${slug}") {
+	if !strings.Contains(client, "/api/v1/content/post/${encodeURIComponent(slug)}") {
 		t.Fatalf("client.ts missing content getBySlug path")
 	}
 
@@ -184,7 +184,7 @@ func TestGenerateTypedSliceUnions(t *testing.T) {
 		t.Fatalf("types.ts missing generated slice union type")
 	}
 
-	if !strings.Contains(types, `{ type: "hero"; data: PageHeroSlice; variation?: string | null }`) {
+	if !strings.Contains(types, `{ __id?: string; type: "hero"; data: PageHeroSlice; variation?: string | null }`) {
 		t.Fatalf("types.ts missing hero slice variant with typed data")
 	}
 
