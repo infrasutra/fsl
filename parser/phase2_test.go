@@ -1736,9 +1736,9 @@ func TestExternalTypes_CrossSchemaReferences(t *testing.T) {
 	externalTypes := []string{"Journalist", "NewsCategory"}
 
 	// This should succeed because Journalist and NewsCategory are external types
-	compiled, err := ParseAndCompileWithExternalTypes(articleFSL, "Article", "article", false, externalTypes)
+	compiled, err := ParseAndCompileWithOptions(articleFSL, "Article", "article", false, Options{ExternalTypes: externalTypes})
 	if err != nil {
-		t.Fatalf("ParseAndCompileWithExternalTypes() error = %v", err)
+		t.Fatalf("ParseAndCompileWithOptions() error = %v", err)
 	}
 
 	// Check that relations are properly detected
@@ -1797,9 +1797,9 @@ func TestExternalTypes_AutoDetectRelation(t *testing.T) {
 
 	externalTypes := []string{"Journalist", "NewsCategory"}
 
-	compiled, err := ParseAndCompileWithExternalTypes(articleFSL, "Article", "article", false, externalTypes)
+	compiled, err := ParseAndCompileWithOptions(articleFSL, "Article", "article", false, Options{ExternalTypes: externalTypes})
 	if err != nil {
-		t.Fatalf("ParseAndCompileWithExternalTypes() error = %v", err)
+		t.Fatalf("ParseAndCompileWithOptions() error = %v", err)
 	}
 
 	// Both fields should be auto-detected as relations

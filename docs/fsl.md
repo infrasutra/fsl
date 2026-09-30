@@ -271,7 +271,7 @@ type Landing {
 - They are compiled into the schema's `components` with `shared: true`, so the compiled schema stays self-contained: validation and code generation need nothing else.
 - Nested `@slices` inside a library type resolve within the library.
 - Named enums used by library types are added to the compiled schema's enums.
-- A type defined in the schema wins over a library type with the same name. With `RejectShadowing`, defining it is an error instead: `type 'Hero' is already defined in the section library`.
+- A schema cannot define a type the library already defines: `type 'Hero' is already defined in the section library`.
 - Removing a section type, removing a section field, or adding a required section field is reported as a breaking change by `DiffSchemas`.
 
 In Go:
@@ -280,13 +280,13 @@ In Go:
 library, err := parser.ParseLibrary(sectionsSource)
 components, err := parser.CompileLibrary(library)
 compiled, err := parser.ParseAndCompileWithOptions(pageSource, "Landing", "landing", false, parser.Options{
-    Library:         library,
-    RejectShadowing: true,
+    ExternalTypes: []string{"Author"},
+    Library:       library,
 })
 result := parser.ParseWithDiagnosticsAndOptions(pageSource, parser.Options{Library: library})
 ```
 
-The `fluxcms` CLI and the language server treat the types of the other `.fsl` files in the schemas directory as the library, so a page file can use sections defined in `sections.fsl`.
+The `fluxcms` CLI and the language server treat the types of the other `.fsl` files in the schemas directory as the library, so a page file can use sections defined in `sections.fsl`. Type names are therefore unique across the directory.
 
 ## Comments
 

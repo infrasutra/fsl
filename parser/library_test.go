@@ -62,7 +62,7 @@ type Note { text: Text! }`
 	assert.Equal(t, "sections[1].data.questions[0].data.answer", errs[0].Field)
 }
 
-func TestLibraryShadowing(t *testing.T) {
+func TestLibraryTypesCannotBeRedefined(t *testing.T) {
 	library, err := ParseLibrary(sectionLibrary)
 	require.NoError(t, err)
 	page := `type Landing {
@@ -71,13 +71,10 @@ func TestLibraryShadowing(t *testing.T) {
 
 type Hero { title: String! }`
 
-	compiled, err := ParseAndCompileWithOptions(page, "Landing", "landing", false, Options{Library: library})
-	require.NoError(t, err)
-	require.Len(t, compiled.Components, 1)
-	assert.False(t, compiled.Components[0].Shared, "without RejectShadowing the local type wins")
-	assert.Equal(t, "title", compiled.Components[0].Fields[0].Name)
+	_, err = ParseAndCompileWithOptions(page, "Landing", "landing", false, Options{Library: library})
+	assert.ErrorContains(t, err, "type 'Hero' is already defined in the section library")
 
-	result := ParseWithDiagnosticsAndOptions(page, Options{Library: library, RejectShadowing: true})
+	result := ParseWithDiagnosticsAndOptions(page, Options{Library: library})
 	require.False(t, result.Valid)
 	require.Len(t, result.Diagnostics, 1)
 	assert.Equal(t, "type 'Hero' is already defined in the section library", result.Diagnostics[0].Message)

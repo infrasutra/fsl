@@ -28,7 +28,6 @@ type Validator struct {
 	relations     map[string][]string
 	externalTypes map[string]bool
 	libraryTypes  map[string]bool
-	rejectShadow  bool
 }
 
 func NewValidator(schema *Schema) *Validator {
@@ -45,12 +44,6 @@ func NewValidator(schema *Schema) *Validator {
 	}
 }
 
-// NewValidatorWithExternalTypes creates a validator that knows about external types
-// (types defined in other schemas that should be treated as valid relation targets)
-func NewValidatorWithExternalTypes(schema *Schema, externalTypes []string) *Validator {
-	return NewValidatorWithOptions(schema, Options{ExternalTypes: externalTypes})
-}
-
 // NewValidatorWithOptions creates a validator that knows about external types
 // and the shared section library described by opts.
 func NewValidatorWithOptions(schema *Schema, opts Options) *Validator {
@@ -63,7 +56,6 @@ func NewValidatorWithOptions(schema *Schema, opts Options) *Validator {
 			v.libraryTypes[t.Name] = true
 		}
 	}
-	v.rejectShadow = opts.RejectShadowing
 	return v
 }
 
@@ -87,7 +79,7 @@ func (v *Validator) Validate() []ValidationError {
 		if v.enumNames[typeDef.Name] {
 			v.addError("", fmt.Sprintf("type name conflicts with enum name: %s", typeDef.Name))
 		}
-		if v.rejectShadow && v.libraryTypes[typeDef.Name] {
+		if v.libraryTypes[typeDef.Name] {
 			v.addError("", fmt.Sprintf("type '%s' is already defined in the section library", typeDef.Name))
 		}
 		v.typeNames[typeDef.Name] = true
@@ -529,12 +521,6 @@ func ValidateSchema(schema *Schema) error {
 	}
 
 	return nil
-}
-
-// ValidateSchemaWithExternalTypes validates a schema while treating specified external types as valid
-// This is useful for templates where multiple schemas can reference each other
-func ValidateSchemaWithExternalTypes(schema *Schema, externalTypes []string) error {
-	return ValidateSchemaWithOptions(schema, Options{ExternalTypes: externalTypes})
 }
 
 // ValidateSchemaWithOptions validates a schema against the external types and

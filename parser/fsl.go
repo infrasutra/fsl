@@ -38,11 +38,7 @@ type DiagnosticsResult struct {
 
 // ParseWithDiagnostics parses FSL and returns structured diagnostics for IDE integration
 func ParseWithDiagnostics(source string) *DiagnosticsResult {
-	return ParseWithDiagnosticsAndExternalTypes(source, nil)
-}
-
-func ParseWithDiagnosticsAndExternalTypes(source string, externalTypes []string) *DiagnosticsResult {
-	return ParseWithDiagnosticsAndOptions(source, Options{ExternalTypes: externalTypes})
+	return ParseWithDiagnosticsAndOptions(source, Options{})
 }
 
 func parseErrorToDiagnostic(errMsg, source string) Diagnostic {
@@ -232,12 +228,6 @@ func ParseAndCompile(source, name, apiID string, singleton bool) (*CompiledSchem
 	}
 
 	return compiled, nil
-}
-
-// ParseAndCompileWithExternalTypes parses and compiles FSL while treating specified types as valid relation targets.
-// This is useful for templates where multiple schemas can reference each other's types.
-func ParseAndCompileWithExternalTypes(source, name, apiID string, singleton bool, externalTypes []string) (*CompiledSchema, error) {
-	return ParseAndCompileWithOptions(source, name, apiID, singleton, Options{ExternalTypes: externalTypes})
 }
 
 // ValidateData validates document data against compiled schema
