@@ -209,9 +209,17 @@ Rules:
 
 - only valid on non-array `JSON` fields
 - requires named mappings (`hero: HeroSlice`) instead of positional args
-- mapped target must be another `type` in the same FSL document
+- mapped target must be another `type` in the same FSL document or in the section library (see below)
 - runtime slice items are validated as `{ type: string, data: object }`
 - `variation` is optional/free-form and not validated
+
+### Field display
+
+- `@label("Headline")`: the name editors see instead of the field name
+- `@help("Keep it under 70 characters")`: a hint shown with the field
+- `@placeholder("A short headline")`: example text shown in an empty input
+
+Each takes one non-empty string. They are kept in the compiled field's decorators and do not affect validation.
 
 ### General Flags
 
@@ -226,7 +234,59 @@ Rules:
 - `@icon("lucide-name")`
   - Stored in compiled schema metadata.
 - `@description("text")`
-  - Stored in compiled schema metadata.
+  - Stored in compiled schema metadata. On a section type, it is stored on the compiled component, so editors can show what the section is for.
+
+## Section Libraries
+
+A section library is a definition whose types are shared sections. Any schema compiled with the library can list them in `@slices` without defining them:
+
+```graphql
+// sections.fsl
+@description("Opening section with a heading and a button")
+type Hero {
+  heading: String! @label("Heading")
+  button_link: String @pattern("^(/|#|https?://)")
+}
+
+@description("Questions and answers")
+type Faq {
+  questions: JSON! @slices(question: Question)
+}
+
+type Question {
+  question: String!
+  answer: Text!
+}
+```
+
+```graphql
+// landing.fsl
+type Landing {
+  title: String!
+  sections: JSON! @slices(hero: Hero, faq: Faq)
+}
+```
+
+- Library types are valid only as `@slices` targets, not as relation targets.
+- They are compiled into the schema's `components` with `shared: true`, so the compiled schema stays self-contained: validation and code generation need nothing else.
+- Nested `@slices` inside a library type resolve within the library.
+- Named enums used by library types are added to the compiled schema's enums.
+- A type defined in the schema wins over a library type with the same name. With `RejectShadowing`, defining it is an error instead: `type 'Hero' is already defined in the section library`.
+- Removing a section type, removing a section field, or adding a required section field is reported as a breaking change by `DiffSchemas`.
+
+In Go:
+
+```go
+library, err := parser.ParseLibrary(sectionsSource)
+components, err := parser.CompileLibrary(library)
+compiled, err := parser.ParseAndCompileWithOptions(pageSource, "Landing", "landing", false, parser.Options{
+    Library:         library,
+    RejectShadowing: true,
+})
+result := parser.ParseWithDiagnosticsAndOptions(pageSource, parser.Options{Library: library})
+```
+
+The `fluxcms` CLI and the language server treat the types of the other `.fsl` files in the schemas directory as the library, so a page file can use sections defined in `sections.fsl`.
 
 ## Comments
 
@@ -313,10 +373,6 @@ Example:
   - Use inline enum (`"a" | "b"`) or named `enum`.
 - Named enum field values are parsed and compiled, but runtime document validation is strictest with inline enums today.
   - Use inline enums if you need hard value enforcement at validation time.
-- Field display decorators below are currently rejected by backend validator:
-  - `@label`
-  - `@help`
-  - `@placeholder`
 - Parser allows multiple `type` definitions in one FSL file, but CMS schema storage is currently single-model per schema record.
 - Reserved field names:
   - `id`
