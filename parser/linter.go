@@ -142,7 +142,7 @@ func lintRequiredFieldOrdering(schema *Schema) []LintResult {
 	for _, typeDef := range schema.Types {
 		seenOptional := false
 		for _, field := range typeDef.Fields {
-			isRequired := field.Required || (field.Array && field.ArrayReq)
+			isRequired := field.Array && field.ArrayReq || !field.Array && field.Required
 			if !isRequired {
 				seenOptional = true
 			} else if seenOptional {

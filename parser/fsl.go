@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -243,7 +244,7 @@ func ValidateData(data map[string]any, schema *CompiledSchema) []ValidationError
 	for _, field := range schema.Fields {
 		value, exists := data[field.Name]
 
-		if field.Required && !exists {
+		if field.Required && !field.Array && !exists {
 			errors = append(errors, ValidationError{
 				Field:   field.Name,
 				Message: "field is required",
@@ -283,7 +284,7 @@ func validateFieldValue(fieldName string, value any, field *CompiledField, schem
 	var errors []ValidationError
 
 	if value == nil {
-		if field.Required {
+		if field.Array && field.ArrayReq || !field.Array && field.Required {
 			errors = append(errors, ValidationError{
 				Field:   fieldName,
 				Message: "value cannot be null for required field",
@@ -328,6 +329,17 @@ func validateFieldValue(fieldName string, value any, field *CompiledField, schem
 
 func validatePrimitiveValue(fieldName string, value any, fieldType string, field *CompiledField, schema *CompiledSchema) []ValidationError {
 	var errors []ValidationError
+
+	if values, ok := namedEnumValues(schema, fieldType); ok && len(field.InlineEnum) == 0 {
+		str, isString := value.(string)
+		if !isString || !slices.Contains(values, str) {
+			errors = append(errors, ValidationError{
+				Field:   fieldName,
+				Message: fmt.Sprintf("must be one of: %s", strings.Join(values, ", ")),
+			})
+		}
+		return errors
+	}
 
 	switch fieldType {
 	case TypeString, TypeText:
@@ -596,7 +608,7 @@ func validateSliceZone(fieldName string, value any, sliceMapping map[string]stri
 			fieldMap[f.Name] = struct{}{}
 
 			value, exists := dataMap[f.Name]
-			if f.Required && !exists {
+			if f.Required && !f.Array && !exists {
 				errors = append(errors, ValidationError{
 					Field:   fmt.Sprintf("%s.data.%s", slicePath, f.Name),
 					Message: "field is required",
@@ -975,4 +987,16 @@ func isJSONSerializable(value any) bool {
 	default:
 		return false
 	}
+}
+
+func namedEnumValues(schema *CompiledSchema, name string) ([]string, bool) {
+	if schema == nil {
+		return nil, false
+	}
+	for _, enum := range schema.Enums {
+		if enum.Name == name {
+			return enum.Values, true
+		}
+	}
+	return nil, false
 }
