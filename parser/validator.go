@@ -28,6 +28,7 @@ type Validator struct {
 	relations     map[string][]string
 	externalTypes map[string]bool
 	libraryTypes  map[string]bool
+	libraryEnums  map[string]bool
 }
 
 func NewValidator(schema *Schema) *Validator {
@@ -41,6 +42,7 @@ func NewValidator(schema *Schema) *Validator {
 		relations:     make(map[string][]string),
 		externalTypes: make(map[string]bool),
 		libraryTypes:  make(map[string]bool),
+		libraryEnums:  make(map[string]bool),
 	}
 }
 
@@ -55,6 +57,9 @@ func NewValidatorWithOptions(schema *Schema, opts Options) *Validator {
 		for _, t := range opts.Library.Types {
 			v.libraryTypes[t.Name] = true
 		}
+		for _, e := range opts.Library.Enums {
+			v.libraryEnums[e.Name] = true
+		}
 	}
 	return v
 }
@@ -64,6 +69,9 @@ func (v *Validator) Validate() []ValidationError {
 	for _, enumDef := range v.schema.Enums {
 		if v.enumNames[enumDef.Name] {
 			v.addError("", fmt.Sprintf("duplicate enum name: %s", enumDef.Name))
+		}
+		if v.libraryEnums[enumDef.Name] {
+			v.addError("", fmt.Sprintf("enum '%s' is already defined in the section library", enumDef.Name))
 		}
 		v.enumNames[enumDef.Name] = true
 		v.enumValues[enumDef.Name] = make(map[string]bool)

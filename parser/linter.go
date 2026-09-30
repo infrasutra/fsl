@@ -114,9 +114,7 @@ func lintUnusedTypes(schema, workspace *Schema) []LintResult {
 		}
 		for _, typeDef := range source.Types {
 			for _, field := range typeDef.Fields {
-				if field.IsRelation {
-					referenced[field.Type] = true
-				}
+				referenced[field.Type] = true
 				mapping, _ := field.Decorators[DecSlices].(map[string]any)
 				for _, target := range mapping {
 					if name, ok := target.(string); ok {

@@ -146,13 +146,14 @@ func validationErrorToDiagnostic(valErr ValidationError, source string) Diagnost
 		}
 	}
 
-	if match := regexp.MustCompile(`^type '(\w+)' is already defined in the section library$`).FindStringSubmatch(valErr.Message); match != nil {
+	if match := regexp.MustCompile(`^(type|enum) '(\w+)' is already defined in the section library$`).FindStringSubmatch(valErr.Message); match != nil {
+		declaration := regexp.MustCompile(`^\s*` + match[1] + `\s+(` + match[2] + `)\b`)
 		for i, line := range lines {
-			if idx := strings.Index(line, "type "+match[1]); idx != -1 {
+			if loc := declaration.FindStringSubmatchIndex(line); loc != nil {
 				diag.StartLine = i + 1
-				diag.StartColumn = idx + len("type ") + 1
+				diag.StartColumn = loc[2] + 1
 				diag.EndLine = i + 1
-				diag.EndColumn = diag.StartColumn + len(match[1])
+				diag.EndColumn = loc[3] + 1
 				return diag
 			}
 		}
