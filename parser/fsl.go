@@ -8,10 +8,6 @@ import (
 	"time"
 )
 
-// =============================================================================
-// Diagnostic Types for IDE Integration
-// =============================================================================
-
 // DiagnosticSeverity represents the severity level of a diagnostic
 type DiagnosticSeverity int
 
@@ -46,41 +42,9 @@ func ParseWithDiagnostics(source string) *DiagnosticsResult {
 }
 
 func ParseWithDiagnosticsAndExternalTypes(source string, externalTypes []string) *DiagnosticsResult {
-	result := &DiagnosticsResult{
-		Valid:       true,
-		Diagnostics: []Diagnostic{},
-	}
-
-	// Parse the source
-	lexer := NewLexer(source)
-	parser := NewParser(lexer)
-	schema, err := parser.ParseSchema()
-	if err != nil {
-		result.Valid = false
-		// Extract line/column from parser error
-		diag := parseErrorToDiagnostic(err.Error(), source)
-		result.Diagnostics = append(result.Diagnostics, diag)
-		return result
-	}
-
-	result.Schema = schema
-
-	// Validate the schema
-	validator := NewValidatorWithExternalTypes(schema, externalTypes)
-	validationErrors := validator.Validate()
-
-	if len(validationErrors) > 0 {
-		result.Valid = false
-		for _, valErr := range validationErrors {
-			diag := validationErrorToDiagnostic(valErr, source)
-			result.Diagnostics = append(result.Diagnostics, diag)
-		}
-	}
-
-	return result
+	return ParseWithDiagnosticsAndOptions(source, Options{ExternalTypes: externalTypes})
 }
 
-// parseErrorToDiagnostic converts a parser error string to a Diagnostic
 func parseErrorToDiagnostic(errMsg, source string) Diagnostic {
 	diag := Diagnostic{
 		Severity:    SeverityError,
@@ -92,8 +56,6 @@ func parseErrorToDiagnostic(errMsg, source string) Diagnostic {
 		Source:      "parser",
 	}
 
-	// Try to extract line and column from error message
-	// Format: "parser error at line X, column Y: message"
 	var line, col int
 	var msg string
 	n, _ := fmt.Sscanf(errMsg, "parser error at line %d, column %d: %s", &line, &col, &msg)
@@ -101,20 +63,19 @@ func parseErrorToDiagnostic(errMsg, source string) Diagnostic {
 		diag.StartLine = line
 		diag.StartColumn = col
 		diag.EndLine = line
-		// Find end of token/word for highlighting
+
 		diag.EndColumn = col + 1
-		// Extract the actual message after the position info
+
 		if idx := strings.Index(errMsg, ": "); idx != -1 {
 			diag.Message = errMsg[idx+2:]
 		}
 	}
 
-	// Extend end column to cover more context
 	lines := strings.Split(source, "\n")
 	if diag.StartLine > 0 && diag.StartLine <= len(lines) {
 		lineContent := lines[diag.StartLine-1]
 		if diag.StartColumn <= len(lineContent) {
-			// Find end of word/token
+
 			endCol := diag.StartColumn
 			for endCol <= len(lineContent) && !isWhitespace(lineContent[endCol-1]) {
 				endCol++
@@ -126,7 +87,6 @@ func parseErrorToDiagnostic(errMsg, source string) Diagnostic {
 	return diag
 }
 
-// validationErrorToDiagnostic converts a ValidationError to a Diagnostic with position
 func validationErrorToDiagnostic(valErr ValidationError, source string) Diagnostic {
 	diag := Diagnostic{
 		Severity: SeverityError,
@@ -134,11 +94,10 @@ func validationErrorToDiagnostic(valErr ValidationError, source string) Diagnost
 		Source:   "validator",
 	}
 
-	// Try to find the field in the source
 	lines := strings.Split(source, "\n")
 
 	if valErr.Field != "" {
-		// Field path like "TypeName.fieldName"
+
 		parts := strings.Split(valErr.Field, ".")
 		var fieldName string
 		if len(parts) >= 2 {
@@ -147,9 +106,8 @@ func validationErrorToDiagnostic(valErr ValidationError, source string) Diagnost
 			fieldName = valErr.Field
 		}
 
-		// Search for the field name in source
 		for i, line := range lines {
-			// Look for field definition pattern: fieldName:
+
 			trimmed := strings.TrimSpace(line)
 			if strings.HasPrefix(trimmed, fieldName+":") || strings.HasPrefix(trimmed, fieldName+" :") {
 				diag.StartLine = i + 1
@@ -160,7 +118,6 @@ func validationErrorToDiagnostic(valErr ValidationError, source string) Diagnost
 			}
 		}
 
-		// If field contains decorator error, search for decorator
 		if strings.Contains(valErr.Message, "@") {
 			decoratorMatch := regexp.MustCompile(`@(\w+)`).FindStringSubmatch(valErr.Message)
 			if len(decoratorMatch) >= 2 {
@@ -178,7 +135,6 @@ func validationErrorToDiagnostic(valErr ValidationError, source string) Diagnost
 		}
 	}
 
-	// If we couldn't find specific location, try to match error message patterns
 	if strings.Contains(valErr.Message, "duplicate type name") {
 		typeName := extractQuotedValue(valErr.Message)
 		if typeName != "" {
@@ -190,6 +146,18 @@ func validationErrorToDiagnostic(valErr ValidationError, source string) Diagnost
 					diag.EndColumn = diag.StartColumn + len(typeName)
 					return diag
 				}
+			}
+		}
+	}
+
+	if match := regexp.MustCompile(`^type '(\w+)' is already defined in the section library$`).FindStringSubmatch(valErr.Message); match != nil {
+		for i, line := range lines {
+			if idx := strings.Index(line, "type "+match[1]); idx != -1 {
+				diag.StartLine = i + 1
+				diag.StartColumn = idx + len("type ") + 1
+				diag.EndLine = i + 1
+				diag.EndColumn = diag.StartColumn + len(match[1])
+				return diag
 			}
 		}
 	}
@@ -212,7 +180,6 @@ func validationErrorToDiagnostic(valErr ValidationError, source string) Diagnost
 		}
 	}
 
-	// Default: first line of schema
 	diag.StartLine = 1
 	diag.StartColumn = 1
 	diag.EndLine = 1
@@ -224,9 +191,8 @@ func validationErrorToDiagnostic(valErr ValidationError, source string) Diagnost
 	return diag
 }
 
-// extractQuotedValue extracts a value from error messages like "unknown type: Foo"
 func extractQuotedValue(msg string) string {
-	// Try ": value" pattern
+
 	if idx := strings.LastIndex(msg, ": "); idx != -1 {
 		return strings.TrimSpace(msg[idx+2:])
 	}
@@ -246,7 +212,6 @@ func Parse(source string) (*Schema, error) {
 		return nil, fmt.Errorf("parse error: %w", err)
 	}
 
-	// Validate the schema
 	if err := ValidateSchema(schema); err != nil {
 		return nil, fmt.Errorf("validation error: %w", err)
 	}
@@ -272,42 +237,21 @@ func ParseAndCompile(source, name, apiID string, singleton bool) (*CompiledSchem
 // ParseAndCompileWithExternalTypes parses and compiles FSL while treating specified types as valid relation targets.
 // This is useful for templates where multiple schemas can reference each other's types.
 func ParseAndCompileWithExternalTypes(source, name, apiID string, singleton bool, externalTypes []string) (*CompiledSchema, error) {
-	// Parse without validation first
-	lexer := NewLexer(source)
-	parser := NewParser(lexer)
-	schema, err := parser.ParseSchema()
-	if err != nil {
-		return nil, fmt.Errorf("parse error: %w", err)
-	}
-
-	// Validate with external types
-	if err := ValidateSchemaWithExternalTypes(schema, externalTypes); err != nil {
-		return nil, fmt.Errorf("validation error: %w", err)
-	}
-
-	compiled, err := Compile(schema, name, apiID, singleton)
-	if err != nil {
-		return nil, fmt.Errorf("compilation error: %w", err)
-	}
-
-	return compiled, nil
+	return ParseAndCompileWithOptions(source, name, apiID, singleton, Options{ExternalTypes: externalTypes})
 }
 
 // ValidateData validates document data against compiled schema
 func ValidateData(data map[string]any, schema *CompiledSchema) []ValidationError {
 	var errors []ValidationError
 
-	// Create a map of field definitions for quick lookup
 	fieldMap := make(map[string]*CompiledField)
 	for i := range schema.Fields {
 		fieldMap[schema.Fields[i].Name] = &schema.Fields[i]
 	}
 
-	// Check required fields
 	for _, field := range schema.Fields {
 		value, exists := data[field.Name]
 
-		// Check if field is required
 		if field.Required && !exists {
 			errors = append(errors, ValidationError{
 				Field:   field.Name,
@@ -316,7 +260,6 @@ func ValidateData(data map[string]any, schema *CompiledSchema) []ValidationError
 			continue
 		}
 
-		// Check if array field is required
 		if field.Array && field.ArrayReq && !exists {
 			errors = append(errors, ValidationError{
 				Field:   field.Name,
@@ -325,17 +268,14 @@ func ValidateData(data map[string]any, schema *CompiledSchema) []ValidationError
 			continue
 		}
 
-		// If field doesn't exist and is not required, skip validation
 		if !exists {
 			continue
 		}
 
-		// Validate field value
 		fieldErrors := validateFieldValue(field.Name, value, &field, schema)
 		errors = append(errors, fieldErrors...)
 	}
 
-	// Check for unexpected fields
 	for fieldName := range data {
 		if _, exists := fieldMap[fieldName]; !exists {
 			errors = append(errors, ValidationError{
@@ -351,7 +291,6 @@ func ValidateData(data map[string]any, schema *CompiledSchema) []ValidationError
 func validateFieldValue(fieldName string, value any, field *CompiledField, schema *CompiledSchema) []ValidationError {
 	var errors []ValidationError
 
-	// Handle nil values
 	if value == nil {
 		if field.Required {
 			errors = append(errors, ValidationError{
@@ -362,7 +301,6 @@ func validateFieldValue(fieldName string, value any, field *CompiledField, schem
 		return errors
 	}
 
-	// Handle array types
 	if field.Array {
 		arr, ok := value.([]any)
 		if !ok {
@@ -380,10 +318,8 @@ func validateFieldValue(fieldName string, value any, field *CompiledField, schem
 			})
 		}
 
-		// Validate array-level decorators (minItems, maxItems)
 		errors = append(errors, validateArrayDecorators(fieldName, arr, field)...)
 
-		// Validate each array element
 		for i, elem := range arr {
 			elemErrors := validatePrimitiveValue(fmt.Sprintf("%s[%d]", fieldName, i), elem, field.Type, field, schema)
 			errors = append(errors, elemErrors...)
@@ -392,10 +328,8 @@ func validateFieldValue(fieldName string, value any, field *CompiledField, schem
 		return errors
 	}
 
-	// Validate primitive value
 	errors = append(errors, validatePrimitiveValue(fieldName, value, field.Type, field, schema)...)
 
-	// Validate decorators
 	errors = append(errors, validateDecorators(fieldName, value, field)...)
 
 	return errors
@@ -420,7 +354,7 @@ func validatePrimitiveValue(fieldName string, value any, fieldType string, field
 		}
 
 	case TypeInt:
-		// Accept both float64 (from JSON) and int64
+
 		switch v := value.(type) {
 		case float64:
 			if v != float64(int64(v)) {
@@ -430,7 +364,7 @@ func validatePrimitiveValue(fieldName string, value any, fieldType string, field
 				})
 			}
 		case int64, int, int32:
-			// Valid integer types
+
 		default:
 			errors = append(errors, ValidationError{
 				Field:   fieldName,
@@ -441,7 +375,7 @@ func validatePrimitiveValue(fieldName string, value any, fieldType string, field
 	case TypeFloat:
 		switch value.(type) {
 		case float64, int64, int, int32, float32:
-			// Valid numeric types
+
 		default:
 			errors = append(errors, ValidationError{
 				Field:   fieldName,
@@ -465,7 +399,7 @@ func validatePrimitiveValue(fieldName string, value any, fieldType string, field
 				Message: "DateTime must be a string in ISO 8601 format",
 			})
 		} else {
-			// Try to parse as RFC3339 (ISO 8601)
+
 			if _, err := time.Parse(time.RFC3339, str); err != nil {
 				errors = append(errors, ValidationError{
 					Field:   fieldName,
@@ -482,7 +416,7 @@ func validatePrimitiveValue(fieldName string, value any, fieldType string, field
 				Message: "Date must be a string in YYYY-MM-DD format",
 			})
 		} else {
-			// Parse as date only
+
 			if _, err := time.Parse("2006-01-02", str); err != nil {
 				errors = append(errors, ValidationError{
 					Field:   fieldName,
@@ -498,8 +432,6 @@ func validatePrimitiveValue(fieldName string, value any, fieldType string, field
 			break
 		}
 
-		// JSON can be any type - no validation needed
-		// But we should ensure it's serializable
 		if !isJSONSerializable(value) {
 			errors = append(errors, ValidationError{
 				Field:   fieldName,
@@ -508,19 +440,19 @@ func validatePrimitiveValue(fieldName string, value any, fieldType string, field
 		}
 
 	case TypeRichText:
-		// RichText must be an array of block objects
+
 		errors = append(errors, validateRichText(fieldName, value, field)...)
 
 	case TypeImage:
-		// Image must be an asset reference object
+
 		errors = append(errors, validateAssetReference(fieldName, value, TypeImage, field)...)
 
 	case TypeFile:
-		// File must be an asset reference object
+
 		errors = append(errors, validateAssetReference(fieldName, value, TypeFile, field)...)
 
 	case "Enum":
-		// Inline enum validation
+
 		if len(field.InlineEnum) > 0 {
 			str, ok := value.(string)
 			if !ok {
@@ -546,12 +478,11 @@ func validatePrimitiveValue(fieldName string, value any, fieldType string, field
 		}
 
 	default:
-		// Could be a named enum, custom type reference, or relation
-		// For relations, validate as reference object
+
 		if field.IsRelation {
 			errors = append(errors, validateRelationReference(fieldName, value)...)
 		}
-		// Named enums and custom types need schema context for full validation
+
 	}
 
 	return errors
@@ -710,7 +641,6 @@ func validateSliceZone(fieldName string, value any, sliceMapping map[string]stri
 	return errors
 }
 
-// validateRichText validates RichText content blocks
 func validateRichText(fieldName string, value any, field *CompiledField) []ValidationError {
 	var errors []ValidationError
 
@@ -733,7 +663,6 @@ func validateRichText(fieldName string, value any, field *CompiledField) []Valid
 			continue
 		}
 
-		// Check block has a type
 		if _, ok := blockMap["type"].(string); !ok {
 			errors = append(errors, ValidationError{
 				Field:   blockPath,
@@ -746,7 +675,6 @@ func validateRichText(fieldName string, value any, field *CompiledField) []Valid
 	return errors
 }
 
-// validateAssetReference validates Image/File asset references
 func validateAssetReference(fieldName string, value any, assetType string, field *CompiledField) []ValidationError {
 	var errors []ValidationError
 
@@ -758,7 +686,6 @@ func validateAssetReference(fieldName string, value any, assetType string, field
 		}}
 	}
 
-	// Check required fields
 	if _, ok := assetMap["url"].(string); !ok {
 		errors = append(errors, ValidationError{
 			Field:   fieldName,
@@ -766,7 +693,6 @@ func validateAssetReference(fieldName string, value any, assetType string, field
 		})
 	}
 
-	// Validate format if @formats decorator is present
 	if formatsVal, ok := field.Decorators[DecFormats]; ok {
 		if filename, ok := assetMap["filename"].(string); ok {
 			ext := getFileExtension(filename)
@@ -793,7 +719,6 @@ func validateAssetReference(fieldName string, value any, assetType string, field
 		}
 	}
 
-	// Validate size if @maxSize decorator is present
 	if maxSizeVal, ok := field.Decorators[DecMaxSize]; ok {
 		if size, ok := assetMap["size"]; ok {
 			if maxSize, ok := toInt64(maxSizeVal); ok {
@@ -812,14 +737,11 @@ func validateAssetReference(fieldName string, value any, assetType string, field
 	return errors
 }
 
-// validateRelationReference validates a relation reference
 func validateRelationReference(fieldName string, value any) []ValidationError {
-	// Relation references can be:
-	// 1. A UUID string
-	// 2. An object with an "id" field
+
 	switch v := value.(type) {
 	case string:
-		// Should be a valid UUID
+
 		if !isValidUUID(v) {
 			return []ValidationError{{
 				Field:   fieldName,
@@ -827,7 +749,7 @@ func validateRelationReference(fieldName string, value any) []ValidationError {
 			}}
 		}
 	case map[string]any:
-		// Should have an "id" field
+
 		if id, ok := v["id"].(string); ok {
 			if !isValidUUID(id) {
 				return []ValidationError{{
@@ -850,7 +772,6 @@ func validateRelationReference(fieldName string, value any) []ValidationError {
 	return nil
 }
 
-// getFileExtension extracts the file extension from a filename
 func getFileExtension(filename string) string {
 	parts := strings.Split(filename, ".")
 	if len(parts) > 1 {
@@ -859,9 +780,8 @@ func getFileExtension(filename string) string {
 	return ""
 }
 
-// isValidUUID checks if a string is a valid UUID format
 func isValidUUID(s string) bool {
-	// Simple UUID format check (8-4-4-4-12 hex digits)
+
 	if len(s) != 36 {
 		return false
 	}
@@ -949,10 +869,10 @@ func validateDecorators(fieldName string, value any, field *CompiledField) []Val
 			}
 
 		case DecPrecision:
-			// Validate float precision
+
 			if num := toFloat64(value); num != nil {
 				if precision, ok := toInt64(decoratorValue); ok {
-					// Check if value has more decimal places than allowed
+
 					formatted := fmt.Sprintf("%.*f", precision, *num)
 					var reparsed float64
 					fmt.Sscanf(formatted, "%f", &reparsed)
@@ -970,7 +890,6 @@ func validateDecorators(fieldName string, value any, field *CompiledField) []Val
 	return errors
 }
 
-// validateArrayDecorators validates array-specific decorators (minItems, maxItems)
 func validateArrayDecorators(fieldName string, arr []any, field *CompiledField) []ValidationError {
 	var errors []ValidationError
 
@@ -998,8 +917,6 @@ func validateArrayDecorators(fieldName string, arr []any, field *CompiledField) 
 
 	return errors
 }
-
-// Helper functions
 
 func toInt64(value any) (int64, bool) {
 	switch v := value.(type) {
@@ -1054,7 +971,7 @@ func isJSONSerializable(value any) bool {
 		}
 		return true
 	case reflect.Map:
-		// Check if keys are strings and values are serializable
+
 		for _, key := range v.MapKeys() {
 			if key.Kind() != reflect.String {
 				return false

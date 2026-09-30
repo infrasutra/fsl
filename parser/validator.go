@@ -22,11 +22,13 @@ type Validator struct {
 	schema        *Schema
 	errors        []ValidationError
 	typeNames     map[string]bool
-	enumNames     map[string]bool            // Named enum definitions
-	enumValues    map[string]map[string]bool // enumName -> value -> exists
-	fieldNames    map[string]map[string]bool // typeName -> fieldName -> exists
-	relations     map[string][]string        // typeName -> list of relation field names
-	externalTypes map[string]bool            // External types that should be treated as valid (for templates)
+	enumNames     map[string]bool
+	enumValues    map[string]map[string]bool
+	fieldNames    map[string]map[string]bool
+	relations     map[string][]string
+	externalTypes map[string]bool
+	libraryTypes  map[string]bool
+	rejectShadow  bool
 }
 
 func NewValidator(schema *Schema) *Validator {
@@ -39,21 +41,34 @@ func NewValidator(schema *Schema) *Validator {
 		fieldNames:    make(map[string]map[string]bool),
 		relations:     make(map[string][]string),
 		externalTypes: make(map[string]bool),
+		libraryTypes:  make(map[string]bool),
 	}
 }
 
 // NewValidatorWithExternalTypes creates a validator that knows about external types
 // (types defined in other schemas that should be treated as valid relation targets)
 func NewValidatorWithExternalTypes(schema *Schema, externalTypes []string) *Validator {
+	return NewValidatorWithOptions(schema, Options{ExternalTypes: externalTypes})
+}
+
+// NewValidatorWithOptions creates a validator that knows about external types
+// and the shared section library described by opts.
+func NewValidatorWithOptions(schema *Schema, opts Options) *Validator {
 	v := NewValidator(schema)
-	for _, t := range externalTypes {
+	for _, t := range opts.ExternalTypes {
 		v.externalTypes[t] = true
 	}
+	if opts.Library != nil {
+		for _, t := range opts.Library.Types {
+			v.libraryTypes[t.Name] = true
+		}
+	}
+	v.rejectShadow = opts.RejectShadowing
 	return v
 }
 
 func (v *Validator) Validate() []ValidationError {
-	// First pass: collect enum names
+
 	for _, enumDef := range v.schema.Enums {
 		if v.enumNames[enumDef.Name] {
 			v.addError("", fmt.Sprintf("duplicate enum name: %s", enumDef.Name))
@@ -65,7 +80,6 @@ func (v *Validator) Validate() []ValidationError {
 		}
 	}
 
-	// Second pass: collect type names (check conflict with enum names)
 	for _, typeDef := range v.schema.Types {
 		if v.typeNames[typeDef.Name] {
 			v.addError("", fmt.Sprintf("duplicate type name: %s", typeDef.Name))
@@ -73,21 +87,21 @@ func (v *Validator) Validate() []ValidationError {
 		if v.enumNames[typeDef.Name] {
 			v.addError("", fmt.Sprintf("type name conflicts with enum name: %s", typeDef.Name))
 		}
+		if v.rejectShadow && v.libraryTypes[typeDef.Name] {
+			v.addError("", fmt.Sprintf("type '%s' is already defined in the section library", typeDef.Name))
+		}
 		v.typeNames[typeDef.Name] = true
 		v.fieldNames[typeDef.Name] = make(map[string]bool)
 	}
 
-	// Third pass: validate enums
 	for _, enumDef := range v.schema.Enums {
 		v.validateEnumDef(&enumDef)
 	}
 
-	// Fourth pass: validate each type and collect relations
 	for i := range v.schema.Types {
 		v.validateTypeDef(&v.schema.Types[i])
 	}
 
-	// Fifth pass: validate relations (cross-type references)
 	v.validateRelations()
 
 	return v.errors
@@ -104,7 +118,6 @@ func (v *Validator) validateEnumDef(enumDef *EnumDef) {
 		return
 	}
 
-	// Check for duplicate values
 	seen := make(map[string]bool)
 	for _, val := range enumDef.Values {
 		if seen[val] {
@@ -115,13 +128,12 @@ func (v *Validator) validateEnumDef(enumDef *EnumDef) {
 }
 
 func (v *Validator) validateTypeDef(typeDef *TypeDef) {
-	// Validate type name
+
 	if typeDef.Name == "" {
 		v.addError("", "type name cannot be empty")
 		return
 	}
 
-	// Validate fields
 	if len(typeDef.Fields) == 0 {
 		v.addError(typeDef.Name, "type must have at least one field")
 	}
@@ -134,30 +146,25 @@ func (v *Validator) validateTypeDef(typeDef *TypeDef) {
 func (v *Validator) validateField(typeName string, field *FieldDef) {
 	fieldPath := fmt.Sprintf("%s.%s", typeName, field.Name)
 
-	// Check for empty field name
 	if field.Name == "" {
 		v.addError(fieldPath, "field name cannot be empty")
 		return
 	}
 
-	// Check for reserved field names
 	if ReservedFieldNames[field.Name] {
 		v.addError(fieldPath, fmt.Sprintf("field name '%s' is reserved", field.Name))
 	}
 
-	// Check for duplicate field names
 	if v.fieldNames[typeName][field.Name] {
 		v.addError(fieldPath, fmt.Sprintf("duplicate field name: %s", field.Name))
 	}
 	v.fieldNames[typeName][field.Name] = true
 
-	// Validate field type
 	if field.Type == "" {
 		v.addError(fieldPath, "field type cannot be empty")
 		return
 	}
 
-	// Check if type exists (builtin, enum, defined type, or external type)
 	isBuiltin := BuiltinTypes[field.Type]
 	isEnum := v.enumNames[field.Type]
 	isDefinedType := v.typeNames[field.Type]
@@ -168,18 +175,14 @@ func (v *Validator) validateField(typeName string, field *FieldDef) {
 		v.addError(fieldPath, fmt.Sprintf("unknown type: %s", field.Type))
 	}
 
-	// Auto-detect relations: if field type is a defined type or external type (not builtin, not enum, not inline enum),
-	// it's a relation. The @relation decorator is still supported for advanced features like inverse/onDelete.
 	if (isDefinedType || isExternalType) && !isBuiltin && !isEnum && !isInlineEnum {
 		field.IsRelation = true
 	}
 
-	// Track relation fields for cross-type validation
 	if field.IsRelation {
 		v.relations[typeName] = append(v.relations[typeName], field.Name)
 	}
 
-	// Validate inline enum values
 	if isInlineEnum {
 		seen := make(map[string]bool)
 		for _, val := range field.InlineEnum {
@@ -190,7 +193,6 @@ func (v *Validator) validateField(typeName string, field *FieldDef) {
 		}
 	}
 
-	// Validate decorators
 	for decoratorName, decoratorValue := range field.Decorators {
 		v.validateDecorator(fieldPath, field.Type, field, decoratorName, decoratorValue)
 	}
@@ -199,51 +201,49 @@ func (v *Validator) validateField(typeName string, field *FieldDef) {
 func (v *Validator) validateDecorator(fieldPath, fieldType string, field *FieldDef, decoratorName string, decoratorValue any) {
 	switch decoratorName {
 	case DecMaxLength, DecMinLength:
-		// Only valid for String and Text
+
 		if fieldType != TypeString && fieldType != TypeText {
 			v.addError(fieldPath, fmt.Sprintf("@%s can only be used with String or Text types", decoratorName))
 		}
-		// Validate value is a positive integer
+
 		if !v.isPositiveInt(decoratorValue) {
 			v.addError(fieldPath, fmt.Sprintf("@%s value must be a positive integer", decoratorName))
 		}
 
 	case DecMin, DecMax:
-		// Only valid for Int and Float
+
 		if fieldType != TypeInt && fieldType != TypeFloat {
 			v.addError(fieldPath, fmt.Sprintf("@%s can only be used with Int or Float types", decoratorName))
 		}
-		// Validate value is a number
+
 		if !v.isNumber(decoratorValue) {
 			v.addError(fieldPath, fmt.Sprintf("@%s value must be a number", decoratorName))
 		}
 
 	case DecPattern:
-		// Only valid for String
+
 		if fieldType != TypeString {
 			v.addError(fieldPath, "@pattern can only be used with String type")
 		}
-		// Validate value is a string
+
 		if _, ok := decoratorValue.(string); !ok {
 			v.addError(fieldPath, "@pattern value must be a string")
 		}
 
 	case DecDefault:
-		// Validate default value type matches field type
+
 		if !v.validateDefaultValue(fieldType, decoratorValue) {
 			v.addError(fieldPath, fmt.Sprintf("@default value type does not match field type %s", fieldType))
 		}
 
 	case DecUnique, DecIndex, DecSearchable, DecHidden:
-		// These are boolean flags, no additional validation needed
-		// Value should be true or omitted
 
 	case DecRelation:
-		// Validate relation decorator
+
 		v.validateRelationDecorator(fieldPath, field, decoratorValue)
 
 	case DecSlices:
-		// Only valid for JSON and only on non-array fields
+
 		if fieldType != TypeJSON {
 			v.addError(fieldPath, "@slices can only be used with JSON type")
 		}
@@ -253,7 +253,7 @@ func (v *Validator) validateDecorator(fieldPath, fieldType string, field *FieldD
 		v.validateSlicesDecorator(fieldPath, decoratorValue)
 
 	case DecMaxSize:
-		// Only valid for Image and File
+
 		if fieldType != TypeImage && fieldType != TypeFile {
 			v.addError(fieldPath, "@maxSize can only be used with Image or File types")
 		}
@@ -262,14 +262,14 @@ func (v *Validator) validateDecorator(fieldPath, fieldType string, field *FieldD
 		}
 
 	case DecFormats:
-		// Only valid for Image and File
+
 		if fieldType != TypeImage && fieldType != TypeFile {
 			v.addError(fieldPath, "@formats can only be used with Image or File types")
 		}
 		v.validateFormatsDecorator(fieldPath, fieldType, decoratorValue)
 
 	case DecPrecision:
-		// Only valid for Float
+
 		if fieldType != TypeFloat {
 			v.addError(fieldPath, "@precision can only be used with Float type")
 		}
@@ -278,7 +278,7 @@ func (v *Validator) validateDecorator(fieldPath, fieldType string, field *FieldD
 		}
 
 	case DecMinItems:
-		// Only valid for array fields
+
 		if !field.Array {
 			v.addError(fieldPath, fmt.Sprintf("@%s can only be used with array types", decoratorName))
 		}
@@ -287,7 +287,7 @@ func (v *Validator) validateDecorator(fieldPath, fieldType string, field *FieldD
 		}
 
 	case DecMaxItems:
-		// Only valid for array fields
+
 		if !field.Array {
 			v.addError(fieldPath, fmt.Sprintf("@%s can only be used with array types", decoratorName))
 		}
@@ -295,23 +295,24 @@ func (v *Validator) validateDecorator(fieldPath, fieldType string, field *FieldD
 			v.addError(fieldPath, "@maxItems value must be a positive integer")
 		}
 
+	case DecLabel, DecHelp, DecPlaceholder:
+		if text, ok := decoratorValue.(string); !ok || strings.TrimSpace(text) == "" {
+			v.addError(fieldPath, fmt.Sprintf("@%s needs a text value, e.g. @%s(\"...\")", decoratorName, decoratorName))
+		}
+
 	default:
-		// Unknown decorator - could warn but not error
+
 		v.addError(fieldPath, fmt.Sprintf("unknown decorator: @%s", decoratorName))
 	}
 }
 
 func (v *Validator) validateRelationDecorator(fieldPath string, field *FieldDef, decoratorValue any) {
-	// @relation can be used with or without arguments
-	// @relation - basic relation
-	// @relation(inverse: "fieldName") - bidirectional relation
 
 	if decoratorValue == true {
-		// Basic relation with no arguments - valid
+
 		return
 	}
 
-	// Check for named arguments
 	if args, ok := decoratorValue.(map[string]any); ok {
 		if inverse, ok := args["inverse"]; ok {
 			if _, isStr := inverse.(string); !isStr {
@@ -361,7 +362,7 @@ func (v *Validator) validateSlicesDecorator(fieldPath string, decoratorValue any
 			continue
 		}
 
-		if !v.typeNames[targetType] {
+		if !v.typeNames[targetType] && !v.libraryTypes[targetType] {
 			v.addError(fieldPath, fmt.Sprintf("slice '%s' references unknown type '%s'", sliceType, targetType))
 		}
 	}
@@ -393,7 +394,6 @@ func (v *Validator) validateFormatsDecorator(fieldPath, fieldType string, decora
 	}
 }
 
-// validateRelations performs cross-type validation for relations
 func (v *Validator) validateRelations() {
 	for _, typeDef := range v.schema.Types {
 		for _, field := range typeDef.Fields {
@@ -404,14 +404,13 @@ func (v *Validator) validateRelations() {
 			fieldPath := fmt.Sprintf("%s.%s", typeDef.Name, field.Name)
 			targetType := field.Type
 
-			// Check if target type exists (must be a defined type or external type, not builtin)
 			if BuiltinTypes[targetType] {
 				v.addError(fieldPath, fmt.Sprintf("@relation target must be a content type, not builtin type %s", targetType))
 				continue
 			}
-			// External types are valid relation targets (for templates with multiple schemas)
+
 			if v.externalTypes[targetType] {
-				// Skip further validation for external types - they're defined elsewhere
+
 				continue
 			}
 			if !v.typeNames[targetType] {
@@ -419,10 +418,9 @@ func (v *Validator) validateRelations() {
 				continue
 			}
 
-			// Check for inverse field if specified
 			if args, ok := field.Decorators[DecRelation].(map[string]any); ok {
 				if inverse, ok := args["inverse"].(string); ok {
-					// Find the inverse field in the target type
+
 					found := false
 					for _, targetTypeDef := range v.schema.Types {
 						if targetTypeDef.Name != targetType {
@@ -431,7 +429,7 @@ func (v *Validator) validateRelations() {
 						for _, targetField := range targetTypeDef.Fields {
 							if targetField.Name == inverse {
 								found = true
-								// Verify inverse field points back to this type
+
 								if targetField.Type != typeDef.Name {
 									v.addError(fieldPath, fmt.Sprintf("inverse field %s.%s does not reference type %s", targetType, inverse, typeDef.Name))
 								}
@@ -467,14 +465,14 @@ func (v *Validator) validateDefaultValue(fieldType string, value any) bool {
 		_, ok := value.(bool)
 		return ok
 	case TypeJSON:
-		// JSON can be any type
+
 		return true
 	case TypeDateTime:
-		// DateTime should be a string in ISO format
+
 		_, ok := value.(string)
 		return ok
 	default:
-		// Custom types - accept any value for now
+
 		return true
 	}
 }
@@ -536,7 +534,13 @@ func ValidateSchema(schema *Schema) error {
 // ValidateSchemaWithExternalTypes validates a schema while treating specified external types as valid
 // This is useful for templates where multiple schemas can reference each other
 func ValidateSchemaWithExternalTypes(schema *Schema, externalTypes []string) error {
-	validator := NewValidatorWithExternalTypes(schema, externalTypes)
+	return ValidateSchemaWithOptions(schema, Options{ExternalTypes: externalTypes})
+}
+
+// ValidateSchemaWithOptions validates a schema against the external types and
+// section library described by opts.
+func ValidateSchemaWithOptions(schema *Schema, opts Options) error {
+	validator := NewValidatorWithOptions(schema, opts)
 	errors := validator.Validate()
 
 	if len(errors) > 0 {

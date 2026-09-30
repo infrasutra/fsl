@@ -90,7 +90,7 @@ func runValidate(cmd *cobra.Command, args []string) error {
 		fileContents[file] = string(content)
 	}
 
-	diagResultsByFile := parseFilesWithWorkspaceTypes(fileContents)
+	diagResultsByFile, _ := parseFilesWithWorkspaceTypes(fileContents)
 	for file, diagResult := range diagResultsByFile {
 		result := resultsByFile[file]
 		result.Valid = diagResult.Valid
@@ -202,13 +202,13 @@ func outputPretty(report ValidationReport) error {
 func getSeverityColor(severity parser.DiagnosticSeverity) string {
 	switch severity {
 	case parser.SeverityError:
-		return "\033[31m" // Red
+		return "\033[31m"
 	case parser.SeverityWarning:
-		return "\033[33m" // Yellow
+		return "\033[33m"
 	case parser.SeverityInfo:
-		return "\033[34m" // Blue
+		return "\033[34m"
 	case parser.SeverityHint:
-		return "\033[36m" // Cyan
+		return "\033[36m"
 	default:
 		return ""
 	}

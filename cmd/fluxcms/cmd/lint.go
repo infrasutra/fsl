@@ -52,7 +52,7 @@ func runLint(cmd *cobra.Command, args []string) error {
 		fileContents[file] = string(content)
 	}
 
-	diagResults := parseFilesWithWorkspaceTypes(fileContents)
+	diagResults, _ := parseFilesWithWorkspaceTypes(fileContents)
 
 	lintCfg := buildLintConfig()
 

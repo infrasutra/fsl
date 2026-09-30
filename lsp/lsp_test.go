@@ -10,10 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ---------------------------------------------------------------------------
-// helpers
-// ---------------------------------------------------------------------------
-
 func newDoc(content string) *Document {
 	doc := NewDocument("file:///test.fsl", content, 1)
 	doc.parse()
@@ -44,10 +40,6 @@ enum Status {
   archived
 }
 `
-
-// ===========================================================================
-// Document
-// ===========================================================================
 
 func TestNewDocument(t *testing.T) {
 	doc := NewDocument("file:///test.fsl", "type Post { title: String! }", 1)
@@ -97,10 +89,6 @@ func TestDocument_GetLine(t *testing.T) {
 	assert.Equal(t, "", doc.GetLine(99))
 }
 
-// ===========================================================================
-// DocumentStore
-// ===========================================================================
-
 func TestDocumentStore(t *testing.T) {
 	store := NewDocumentStore()
 
@@ -137,10 +125,6 @@ func TestDocumentStore(t *testing.T) {
 	})
 }
 
-// ===========================================================================
-// Diagnostics
-// ===========================================================================
-
 func TestGetDiagnostics_ValidSchema(t *testing.T) {
 	doc := newDoc("type Post { title: String! }")
 	diags := GetDiagnostics(doc, []*Document{doc})
@@ -169,7 +153,7 @@ func TestGetDiagnostics_EmptyDocument(t *testing.T) {
 func TestGetDiagnostics_MultipleTypes(t *testing.T) {
 	doc := newDoc(blogSchema)
 	diags := GetDiagnostics(doc, []*Document{doc})
-	// Unreferenced enum produces a warning (severity 2), not an error
+
 	for _, d := range diags {
 		assert.NotEqual(t, SeverityError, d.Severity,
 			"should not have errors, got: %v", d)
@@ -191,15 +175,11 @@ func TestConvertDiagnostic(t *testing.T) {
 		d := ConvertDiagnostic(fslDiag(1, 1, 5, 1, 10, "test error"))
 		assert.Equal(t, SeverityError, d.Severity)
 		assert.Equal(t, "test error", d.Message)
-		// parser uses 1-based lines; LSP uses 0-based
-		assert.Equal(t, 0, d.Range.Start.Line)      // 1-1=0
-		assert.Equal(t, 4, d.Range.Start.Character) // startCol-1
+
+		assert.Equal(t, 0, d.Range.Start.Line)
+		assert.Equal(t, 4, d.Range.Start.Character)
 	})
 }
-
-// ===========================================================================
-// Completions
-// ===========================================================================
 
 func TestGetCompletions_FieldType(t *testing.T) {
 	doc := newDoc("type Post {\n  title: \n}")
@@ -212,7 +192,7 @@ func TestGetCompletions_TopLevel(t *testing.T) {
 	doc := newDoc("type Post {\n  title: String!\n}\n")
 	completions := GetCompletions(doc, Position{Line: 3, Character: 0})
 	require.NotNil(t, completions)
-	// Should suggest 'type' and 'enum' keywords at top level
+
 	hasType := false
 	for _, item := range completions.Items {
 		if item.Label == "type" {
@@ -250,13 +230,9 @@ func TestGetBuiltinTypes(t *testing.T) {
 	assert.Contains(t, types, "JSON")
 }
 
-// ===========================================================================
-// Hover
-// ===========================================================================
-
 func TestGetHover_TypeKeyword(t *testing.T) {
 	doc := newDoc(blogSchema)
-	hover := GetHover(doc, Position{Line: 3, Character: 6}) // "Article"
+	hover := GetHover(doc, Position{Line: 3, Character: 6})
 	if hover != nil {
 		assert.NotEmpty(t, hover.Contents.Value)
 	}
@@ -281,16 +257,12 @@ func TestGetHover_SlicesDecorator(t *testing.T) {
 func TestGetHover_NilOnWhitespace(t *testing.T) {
 	doc := newDoc("type Post {\n\n}")
 	hover := GetHover(doc, Position{Line: 1, Character: 0})
-	// Empty line should return nil or empty hover
+
 	if hover != nil {
-		// That's fine, just testing it doesn't panic
+
 		t.Logf("hover on empty line: %v", hover.Contents.Value)
 	}
 }
-
-// ===========================================================================
-// Symbols
-// ===========================================================================
 
 func TestGetDocumentSymbols_Types(t *testing.T) {
 	doc := newDoc(blogSchema)
@@ -309,9 +281,8 @@ func TestGetDocumentSymbols_Types(t *testing.T) {
 func TestGetDocumentSymbols_Fields(t *testing.T) {
 	doc := newDoc("type Post {\n  title: String!\n  slug: String!\n}")
 	symbols := GetDocumentSymbols(doc)
-	require.Len(t, symbols, 1) // Post type
+	require.Len(t, symbols, 1)
 
-	// Post should have children (fields)
 	assert.NotEmpty(t, symbols[0].Children, "type should have field children")
 
 	fieldNames := make(map[string]bool)
@@ -468,7 +439,6 @@ func TestWorkspaceSymbols(t *testing.T) {
 	server := &Server{documents: NewDocumentStore()}
 	handler := NewHandler(server)
 
-	// Normal formatting
 	server.GetDocuments().Open("file:///workspace/article.fsl", `
 type Article {
 	title: String!
@@ -481,7 +451,6 @@ enum Status {
 }
 `, 1)
 
-	// Weird formatting (double spaces, etc.)
 	server.GetDocuments().Open("file:///workspace/category.fsl", `
 type  Category  {
 	name  :  String!
@@ -529,19 +498,14 @@ type  Category  {
 
 		symbols, ok := result.([]SymbolInformation)
 		require.True(t, ok)
-		// Article, title, name, Status, draft, published, Category, name = 8 symbols
+
 		assert.Len(t, symbols, 8)
 	})
 }
 
-// ===========================================================================
-// Definition
-// ===========================================================================
-
 func TestGetDefinition_TypeReference(t *testing.T) {
 	doc := newDoc(blogSchema)
-	// "Category" in "category: Category @relation" — line index depends on exact content
-	// Find the line with "category: Category"
+
 	for i := range 20 {
 		line := doc.GetLine(i)
 		if line == "" {
@@ -560,7 +524,7 @@ func TestGetDefinition_TypeReference(t *testing.T) {
 
 func TestGetReferences_TypeName(t *testing.T) {
 	doc := newDoc(blogSchema)
-	// Find "Category" type declaration line
+
 	for i := range 20 {
 		line := doc.GetLine(i)
 		if isTypeDeclaration(line, "Category") {
@@ -570,10 +534,6 @@ func TestGetReferences_TypeName(t *testing.T) {
 		}
 	}
 }
-
-// ===========================================================================
-// Helper formatters
-// ===========================================================================
 
 func TestFormatFieldType(t *testing.T) {
 	assert.Equal(t, "String", formatFieldType("String", false, false))
@@ -608,10 +568,6 @@ func TestIsTypeDeclaration(t *testing.T) {
 	assert.False(t, isTypeDeclaration("  author: Article @relation", "Article"))
 }
 
-// ===========================================================================
-// Helpers
-// ===========================================================================
-
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && indexOf(s, substr) >= 0
 }
@@ -625,7 +581,6 @@ func indexOf(s, substr string) int {
 	return -1
 }
 
-// fslDiag creates a parser.Diagnostic for testing
 func fslDiag(severity, startLine, startCol, endLine, endCol int, msg string) parser.Diagnostic {
 	return parser.Diagnostic{
 		Severity:    parser.DiagnosticSeverity(severity),
@@ -636,4 +591,13 @@ func fslDiag(severity, startLine, startCol, endLine, endCol int, msg string) par
 		EndColumn:   endCol,
 		Source:      "fsl",
 	}
+}
+
+func TestGetDiagnostics_SectionsFromAnotherFile(t *testing.T) {
+	sections := NewDocument("file:///sections.fsl", "type Hero { heading: String! }", 1)
+	landing := NewDocument("file:///landing.fsl", "type Landing {\n  sections: JSON! @slices(hero: Hero)\n}", 1)
+	assert.Empty(t, GetDiagnostics(landing, []*Document{sections, landing}))
+
+	alone := NewDocument("file:///alone.fsl", "type Landing {\n  sections: JSON! @slices(hero: Hero)\n}", 1)
+	assert.NotEmpty(t, GetDiagnostics(alone, []*Document{alone}))
 }

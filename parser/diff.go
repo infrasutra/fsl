@@ -23,6 +23,7 @@ const (
 	ChangeKindEnum      ChangeKind = "enum"
 	ChangeKindRelation  ChangeKind = "relation"
 	ChangeKindType      ChangeKind = "type" // Type-level changes (singleton, collection)
+	ChangeKindComponent ChangeKind = "component"
 )
 
 // SchemaChange represents a single change between schema versions
@@ -57,24 +58,19 @@ func DiffSchemas(from, to *CompiledSchema) *SchemaDiff {
 		Changes:      []SchemaChange{},
 	}
 
-	// If checksums match, no changes
 	if from.Checksum == to.Checksum {
 		return diff
 	}
 
-	// Compare type-level properties
 	diff.compareTypeLevel(from, to)
 
-	// Compare fields
-	diff.compareFields(from, to)
+	diff.compareFieldSets("", from.Fields, to.Fields)
+	diff.compareComponents(from, to)
 
-	// Compare enums
 	diff.compareEnums(from, to)
 
-	// Compare relations
 	diff.compareRelations(from, to)
 
-	// Set hasBreaking flag
 	for _, change := range diff.Changes {
 		if change.Breaking {
 			diff.HasBreaking = true
@@ -86,7 +82,7 @@ func DiffSchemas(from, to *CompiledSchema) *SchemaDiff {
 }
 
 func (d *SchemaDiff) compareTypeLevel(from, to *CompiledSchema) {
-	// Singleton change
+
 	if from.Singleton != to.Singleton {
 		d.Changes = append(d.Changes, SchemaChange{
 			Type:     ChangeTypeModified,
@@ -94,12 +90,11 @@ func (d *SchemaDiff) compareTypeLevel(from, to *CompiledSchema) {
 			Path:     "singleton",
 			OldValue: from.Singleton,
 			NewValue: to.Singleton,
-			Breaking: from.Singleton && !to.Singleton, // Breaking if going from singleton to non-singleton
+			Breaking: from.Singleton && !to.Singleton,
 			Message:  fmt.Sprintf("singleton changed from %v to %v", from.Singleton, to.Singleton),
 		})
 	}
 
-	// Collection name change
 	if from.Collection != to.Collection {
 		d.Changes = append(d.Changes, SchemaChange{
 			Type:     ChangeTypeModified,
@@ -113,18 +108,52 @@ func (d *SchemaDiff) compareTypeLevel(from, to *CompiledSchema) {
 	}
 }
 
-func (d *SchemaDiff) compareFields(from, to *CompiledSchema) {
+func (d *SchemaDiff) compareComponents(from, to *CompiledSchema) {
+	fromComponents := make(map[string]*CompiledComponent, len(from.Components))
+	toComponents := make(map[string]*CompiledComponent, len(to.Components))
+	for i := range from.Components {
+		fromComponents[from.Components[i].Name] = &from.Components[i]
+	}
+	for i := range to.Components {
+		toComponents[to.Components[i].Name] = &to.Components[i]
+	}
+	for name := range fromComponents {
+		if _, exists := toComponents[name]; !exists {
+			d.Changes = append(d.Changes, SchemaChange{
+				Type:     ChangeTypeRemoved,
+				Kind:     ChangeKindComponent,
+				Path:     fmt.Sprintf("components.%s", name),
+				Breaking: true,
+				Message:  fmt.Sprintf("section type '%s' was removed", name),
+			})
+		}
+	}
+	for name, toComponent := range toComponents {
+		fromComponent, exists := fromComponents[name]
+		if !exists {
+			d.Changes = append(d.Changes, SchemaChange{
+				Type:    ChangeTypeAdded,
+				Kind:    ChangeKindComponent,
+				Path:    fmt.Sprintf("components.%s", name),
+				Message: fmt.Sprintf("section type '%s' was added", name),
+			})
+			continue
+		}
+		d.compareFieldSets(name+".", fromComponent.Fields, toComponent.Fields)
+	}
+}
+
+func (d *SchemaDiff) compareFieldSets(prefix string, fromList, toList []CompiledField) {
 	fromFields := make(map[string]*CompiledField)
 	toFields := make(map[string]*CompiledField)
 
-	for i := range from.Fields {
-		fromFields[from.Fields[i].Name] = &from.Fields[i]
+	for i := range fromList {
+		fromFields[prefix+fromList[i].Name] = &fromList[i]
 	}
-	for i := range to.Fields {
-		toFields[to.Fields[i].Name] = &to.Fields[i]
+	for i := range toList {
+		toFields[prefix+toList[i].Name] = &toList[i]
 	}
 
-	// Check for removed fields
 	for name, fromField := range fromFields {
 		if _, exists := toFields[name]; !exists {
 			d.Changes = append(d.Changes, SchemaChange{
@@ -133,17 +162,16 @@ func (d *SchemaDiff) compareFields(from, to *CompiledSchema) {
 				Path:      fmt.Sprintf("fields.%s", name),
 				FieldName: name,
 				OldValue:  fromField,
-				Breaking:  true, // Removing a field is always breaking
+				Breaking:  true,
 				Message:   fmt.Sprintf("field '%s' was removed", name),
 			})
 		}
 	}
 
-	// Check for added and modified fields
 	for name, toField := range toFields {
 		fromField, exists := fromFields[name]
 		if !exists {
-			// Field was added
+
 			breaking := toField.Required && !hasDefault(toField)
 			d.Changes = append(d.Changes, SchemaChange{
 				Type:      ChangeTypeAdded,
@@ -157,13 +185,12 @@ func (d *SchemaDiff) compareFields(from, to *CompiledSchema) {
 			continue
 		}
 
-		// Compare field properties
 		d.compareFieldDetails(name, fromField, toField)
 	}
 }
 
 func (d *SchemaDiff) compareFieldDetails(name string, from, to *CompiledField) {
-	// Type change
+
 	if from.Type != to.Type {
 		d.Changes = append(d.Changes, SchemaChange{
 			Type:      ChangeTypeModified,
@@ -172,14 +199,13 @@ func (d *SchemaDiff) compareFieldDetails(name string, from, to *CompiledField) {
 			FieldName: name,
 			OldValue:  from.Type,
 			NewValue:  to.Type,
-			Breaking:  true, // Type changes are always breaking
+			Breaking:  true,
 			Message:   fmt.Sprintf("field '%s' type changed from %s to %s", name, from.Type, to.Type),
 		})
 	}
 
-	// Required change
 	if from.Required != to.Required {
-		breaking := !from.Required && to.Required // Breaking if becoming required
+		breaking := !from.Required && to.Required
 		d.Changes = append(d.Changes, SchemaChange{
 			Type:      ChangeTypeModified,
 			Kind:      ChangeKindField,
@@ -192,7 +218,6 @@ func (d *SchemaDiff) compareFieldDetails(name string, from, to *CompiledField) {
 		})
 	}
 
-	// Array change
 	if from.Array != to.Array {
 		d.Changes = append(d.Changes, SchemaChange{
 			Type:      ChangeTypeModified,
@@ -201,12 +226,11 @@ func (d *SchemaDiff) compareFieldDetails(name string, from, to *CompiledField) {
 			FieldName: name,
 			OldValue:  from.Array,
 			NewValue:  to.Array,
-			Breaking:  true, // Array/non-array change is breaking
+			Breaking:  true,
 			Message:   fmt.Sprintf("field '%s' array changed from %v to %v", name, from.Array, to.Array),
 		})
 	}
 
-	// Relation change
 	if from.IsRelation != to.IsRelation || from.RelationTo != to.RelationTo {
 		d.Changes = append(d.Changes, SchemaChange{
 			Type:      ChangeTypeModified,
@@ -220,9 +244,8 @@ func (d *SchemaDiff) compareFieldDetails(name string, from, to *CompiledField) {
 		})
 	}
 
-	// Inline enum change
 	if !equalStringSlices(from.InlineEnum, to.InlineEnum) {
-		// Removing enum values is breaking, adding is not
+
 		breaking := hasRemovedValues(from.InlineEnum, to.InlineEnum)
 		d.Changes = append(d.Changes, SchemaChange{
 			Type:      ChangeTypeModified,
@@ -236,12 +259,11 @@ func (d *SchemaDiff) compareFieldDetails(name string, from, to *CompiledField) {
 		})
 	}
 
-	// Compare decorators
 	d.compareDecorators(name, from.Decorators, to.Decorators)
 }
 
 func (d *SchemaDiff) compareDecorators(fieldName string, from, to map[string]any) {
-	// Check for removed decorators
+
 	for decName, fromVal := range from {
 		if _, exists := to[decName]; !exists {
 			breaking := isBreakingDecoratorRemoval(decName)
@@ -257,7 +279,6 @@ func (d *SchemaDiff) compareDecorators(fieldName string, from, to map[string]any
 		}
 	}
 
-	// Check for added and modified decorators
 	for decName, toVal := range to {
 		fromVal, exists := from[decName]
 		if !exists {
@@ -274,7 +295,6 @@ func (d *SchemaDiff) compareDecorators(fieldName string, from, to map[string]any
 			continue
 		}
 
-		// Check if value changed
 		if !equalValues(fromVal, toVal) {
 			breaking := isBreakingDecoratorChange(decName, fromVal, toVal)
 			d.Changes = append(d.Changes, SchemaChange{
@@ -302,7 +322,6 @@ func (d *SchemaDiff) compareEnums(from, to *CompiledSchema) {
 		toEnums[to.Enums[i].Name] = &to.Enums[i]
 	}
 
-	// Check for removed enums
 	for name := range fromEnums {
 		if _, exists := toEnums[name]; !exists {
 			d.Changes = append(d.Changes, SchemaChange{
@@ -316,7 +335,6 @@ func (d *SchemaDiff) compareEnums(from, to *CompiledSchema) {
 		}
 	}
 
-	// Check for added and modified enums
 	for name, toEnum := range toEnums {
 		fromEnum, exists := fromEnums[name]
 		if !exists {
@@ -331,7 +349,6 @@ func (d *SchemaDiff) compareEnums(from, to *CompiledSchema) {
 			continue
 		}
 
-		// Check for value changes
 		if !equalStringSlices(fromEnum.Values, toEnum.Values) {
 			breaking := hasRemovedValues(fromEnum.Values, toEnum.Values)
 			d.Changes = append(d.Changes, SchemaChange{
@@ -358,7 +375,6 @@ func (d *SchemaDiff) compareRelations(from, to *CompiledSchema) {
 		toRels[to.Relations[i].FieldName] = &to.Relations[i]
 	}
 
-	// Check for removed relations
 	for name := range fromRels {
 		if _, exists := toRels[name]; !exists {
 			d.Changes = append(d.Changes, SchemaChange{
@@ -373,7 +389,6 @@ func (d *SchemaDiff) compareRelations(from, to *CompiledSchema) {
 		}
 	}
 
-	// Check for added relations
 	for name, toRel := range toRels {
 		if _, exists := fromRels[name]; !exists {
 			d.Changes = append(d.Changes, SchemaChange{
@@ -388,8 +403,6 @@ func (d *SchemaDiff) compareRelations(from, to *CompiledSchema) {
 		}
 	}
 }
-
-// Helper functions
 
 func hasDefault(field *CompiledField) bool {
 	_, ok := field.Decorators[DecDefault]
@@ -422,7 +435,7 @@ func hasRemovedValues(from, to []string) bool {
 }
 
 func equalValues(a, b any) bool {
-	// Use JSON marshaling for deep equality comparison
+
 	aJSON, err1 := json.Marshal(a)
 	bJSON, err2 := json.Marshal(b)
 	if err1 != nil || err2 != nil {
@@ -432,13 +445,12 @@ func equalValues(a, b any) bool {
 }
 
 func isBreakingDecoratorRemoval(decName string) bool {
-	// Removing validation decorators is generally not breaking
-	// Removing unique/required constraints could be breaking depending on context
+
 	switch decName {
 	case DecRequired:
-		return false // Removing required is not breaking
+		return false
 	case DecUnique:
-		return false // Removing unique constraint is not breaking for data
+		return false
 	default:
 		return false
 	}
@@ -447,15 +459,15 @@ func isBreakingDecoratorRemoval(decName string) bool {
 func isBreakingDecoratorAddition(decName string, value any) bool {
 	switch decName {
 	case DecRequired:
-		return true // Adding required is breaking
+		return true
 	case DecMaxLength, DecMinLength:
-		return true // Adding length constraints could invalidate existing data
+		return true
 	case DecMin, DecMax:
-		return true // Adding numeric constraints could invalidate existing data
+		return true
 	case DecPattern:
-		return true // Adding pattern could invalidate existing data
+		return true
 	case DecMinItems, DecMaxItems:
-		return true // Adding array constraints could invalidate existing data
+		return true
 	default:
 		return false
 	}
@@ -464,32 +476,32 @@ func isBreakingDecoratorAddition(decName string, value any) bool {
 func isBreakingDecoratorChange(decName string, from, to any) bool {
 	switch decName {
 	case DecMaxLength:
-		// Decreasing maxLength is breaking
+
 		fromLen, ok1 := toInt64Value(from)
 		toLen, ok2 := toInt64Value(to)
 		return ok1 && ok2 && toLen < fromLen
 	case DecMinLength:
-		// Increasing minLength is breaking
+
 		fromLen, ok1 := toInt64Value(from)
 		toLen, ok2 := toInt64Value(to)
 		return ok1 && ok2 && toLen > fromLen
 	case DecMax:
-		// Decreasing max is breaking
+
 		fromMax, ok1 := toFloat64Value(from)
 		toMax, ok2 := toFloat64Value(to)
 		return ok1 && ok2 && toMax < fromMax
 	case DecMin:
-		// Increasing min is breaking
+
 		fromMin, ok1 := toFloat64Value(from)
 		toMin, ok2 := toFloat64Value(to)
 		return ok1 && ok2 && toMin > fromMin
 	case DecMaxItems:
-		// Decreasing maxItems is breaking
+
 		fromMax, ok1 := toInt64Value(from)
 		toMax, ok2 := toInt64Value(to)
 		return ok1 && ok2 && toMax < fromMax
 	case DecMinItems:
-		// Increasing minItems is breaking
+
 		fromMin, ok1 := toInt64Value(from)
 		toMin, ok2 := toInt64Value(to)
 		return ok1 && ok2 && toMin > fromMin
