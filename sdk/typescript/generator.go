@@ -143,16 +143,26 @@ func (g *Generator) generateInterface(schema *parser.CompiledSchema, config sdk.
 
 	for _, field := range schema.Fields {
 		tsType := g.mapFieldTypeWithNullability(schema, &field, config.StrictNullChecks)
-		optionalMarker := ""
-		if !field.Required && !field.ArrayReq {
-			optionalMarker = "?"
-		}
-		buf.WriteString(fmt.Sprintf("  %s%s: %s;\n", field.Name, optionalMarker, tsType))
+		buf.WriteString(fmt.Sprintf("  %s%s: %s;\n", field.Name, optionalMarker(&field), tsType))
 	}
 
 	buf.WriteString("}\n")
 
 	return buf.String()
+}
+
+func optionalMarker(field *parser.CompiledField) string {
+	if isOptionalField(field) {
+		return "?"
+	}
+	return ""
+}
+
+func isOptionalField(field *parser.CompiledField) bool {
+	if field.Array || len(field.Slices) > 0 {
+		return !field.ArrayReq && !(len(field.Slices) > 0 && field.Required)
+	}
+	return !field.Required
 }
 
 func (g *Generator) generateCreateInput(schema *parser.CompiledSchema, config sdk.GeneratorConfig) string {
@@ -163,13 +173,9 @@ func (g *Generator) generateCreateInput(schema *parser.CompiledSchema, config sd
 	buf.WriteString(fmt.Sprintf("export interface Create%sInput {\n", typeName))
 
 	for _, field := range schema.Fields {
-		isOptional := !field.Required && !field.ArrayReq
+		isOptional := isOptionalField(&field)
 		tsType := g.mapInputFieldType(schema, &field, config.StrictNullChecks, isOptional)
-		optionalMarker := ""
-		if isOptional {
-			optionalMarker = "?"
-		}
-		buf.WriteString(fmt.Sprintf("  %s%s: %s;\n", field.Name, optionalMarker, tsType))
+		buf.WriteString(fmt.Sprintf("  %s%s: %s;\n", field.Name, optionalMarker(&field), tsType))
 	}
 
 	buf.WriteString("}\n")
@@ -199,16 +205,12 @@ func (g *Generator) generateFilterType(schema *parser.CompiledSchema, config sdk
 
 	typeName := ToPascalCase(schema.Name)
 
-	buf.WriteString(fmt.Sprintf("export interface %sFilter {\n", typeName))
 	if config.TargetAPI == "content" {
-		buf.WriteString("  page?: number;\n")
-		buf.WriteString("  perPage?: number;\n")
-		buf.WriteString("  locale?: string;\n")
-		buf.WriteString("  createdAfter?: string;\n")
-		buf.WriteString("  createdBefore?: string;\n")
-		buf.WriteString("  sortBy?: string;\n")
-		buf.WriteString("  sortOrder?: 'asc' | 'desc';\n")
-	} else {
+		buf.WriteString(fmt.Sprintf("export type %sFilter = ContentListOptions;\n", typeName))
+		return buf.String()
+	}
+	buf.WriteString(fmt.Sprintf("export interface %sFilter {\n", typeName))
+	{
 		buf.WriteString("  limit?: number;\n")
 		buf.WriteString("  offset?: number;\n")
 		buf.WriteString("  status?: 'draft' | 'published' | 'archived';\n")
@@ -221,12 +223,15 @@ func (g *Generator) generateFilterType(schema *parser.CompiledSchema, config sdk
 
 func mapInputFieldType(field *parser.CompiledField, strictNullChecks, allowNull bool) string {
 	tsType := MapFieldType(field)
-	if field.IsRelation {
-		if field.Array {
-			tsType = "string[]"
-		} else {
-			tsType = "string"
-		}
+	switch {
+	case field.IsRelation && field.Array:
+		tsType = "string[]"
+	case field.IsRelation:
+		tsType = "string"
+	case field.Array && strings.Contains(tsType, "|"):
+		tsType = "(" + tsType + ")[]"
+	case field.Array:
+		tsType += "[]"
 	}
 	if allowNull && strictNullChecks {
 		tsType = tsType + " | null"
@@ -262,62 +267,69 @@ func (g *Generator) mapInputFieldType(schema *parser.CompiledSchema, field *pars
 
 func (g *Generator) generateSliceSupportTypes(schema *parser.CompiledSchema, config sdk.GeneratorConfig) string {
 	var buf bytes.Buffer
-
 	componentByName := make(map[string]*parser.CompiledComponent, len(schema.Components))
 	for i := range schema.Components {
-		component := &schema.Components[i]
-		componentByName[component.Name] = component
+		componentByName[schema.Components[i].Name] = &schema.Components[i]
 	}
+	emitted := map[string]bool{}
 
-	emittedComponents := map[string]bool{}
-
-	for _, field := range schema.Fields {
-		if len(field.Slices) == 0 {
-			continue
+	var emitUnion func(owner string, field *parser.CompiledField)
+	emitComponent := func(name string) {
+		typeName := g.sliceComponentTypeName(schema, name)
+		component, ok := componentByName[name]
+		if !ok || emitted[typeName] {
+			return
 		}
-
+		emitted[typeName] = true
+		for i := range component.Fields {
+			if len(component.Fields[i].Slices) > 0 {
+				emitUnion(name, &component.Fields[i])
+			}
+		}
+		buf.WriteString(fmt.Sprintf("export interface %s {\n", typeName))
+		for i := range component.Fields {
+			field := &component.Fields[i]
+			tsType := MapFieldTypeWithNullability(field, config.StrictNullChecks)
+			if len(field.Slices) > 0 {
+				tsType = g.nestedSliceUnionTypeName(schema, name, field) + "[]"
+			}
+			buf.WriteString(fmt.Sprintf("  %s%s: %s;\n", field.Name, optionalMarker(field), tsType))
+		}
+		buf.WriteString("}\n\n")
+	}
+	emitUnion = func(owner string, field *parser.CompiledField) {
+		unionName := g.sliceUnionTypeName(schema, field)
+		if owner != "" {
+			unionName = g.nestedSliceUnionTypeName(schema, owner, field)
+		}
+		if emitted[unionName] {
+			return
+		}
+		emitted[unionName] = true
 		for _, slice := range field.Slices {
-			component, ok := componentByName[slice.Schema]
-			if !ok {
-				continue
-			}
-
-			componentTypeName := g.sliceComponentTypeName(schema, slice.Schema)
-			if emittedComponents[componentTypeName] {
-				continue
-			}
-
-			emittedComponents[componentTypeName] = true
-			buf.WriteString(fmt.Sprintf("export interface %s {\n", componentTypeName))
-			for _, componentField := range component.Fields {
-				tsType := MapFieldTypeWithNullability(&componentField, config.StrictNullChecks)
-				optionalMarker := ""
-				if !componentField.Required && !componentField.ArrayReq {
-					optionalMarker = "?"
-				}
-				buf.WriteString(fmt.Sprintf("  %s%s: %s;\n", componentField.Name, optionalMarker, tsType))
-			}
-			buf.WriteString("}\n\n")
+			emitComponent(slice.Schema)
 		}
-
-		unionTypeName := g.sliceUnionTypeName(schema, &field)
-		buf.WriteString(fmt.Sprintf("export type %s =\n", unionTypeName))
+		buf.WriteString(fmt.Sprintf("export type %s =\n", unionName))
 		for idx, slice := range field.Slices {
 			separator := " |"
 			if idx == len(field.Slices)-1 {
 				separator = ";"
 			}
-
-			buf.WriteString(fmt.Sprintf("  { type: \"%s\"; data: %s; variation?: string | null }%s\n",
-				slice.Type,
-				g.sliceComponentTypeName(schema, slice.Schema),
-				separator,
-			))
+			buf.WriteString(fmt.Sprintf("  { __id?: string; type: \"%s\"; data: %s; variation?: string | null }%s\n", slice.Type, g.sliceComponentTypeName(schema, slice.Schema), separator))
 		}
 		buf.WriteString("\n")
 	}
 
+	for i := range schema.Fields {
+		if len(schema.Fields[i].Slices) > 0 {
+			emitUnion("", &schema.Fields[i])
+		}
+	}
 	return buf.String()
+}
+
+func (g *Generator) nestedSliceUnionTypeName(schema *parser.CompiledSchema, component string, field *parser.CompiledField) string {
+	return ToPascalCase(schema.Name) + ToPascalCase(component) + ToPascalCase(field.Name) + "Slice"
 }
 
 func (g *Generator) sliceUnionTypeName(schema *parser.CompiledSchema, field *parser.CompiledField) string {
@@ -412,10 +424,12 @@ import type {
   {{ .Name | pascal }}Document,
   {{ .Name | pascal }}ListResponse,
 {{- else }}
-  {{ .Name | pascal }}Filter,
   {{ .Name | pascal }}ContentItem,
   {{ .Name | pascal }}ContentListResponse,
 {{- end }}
+{{- end }}
+{{- if ne .TargetAPI "cms" }}
+  ContentListOptions,
 {{- end }}
 } from './types';
 
@@ -427,24 +441,20 @@ export interface FluxClientConfig {
 
 export class FluxClient {
   private config: FluxClientConfig;
-{{- if eq .TargetAPI "content" }}
-  private workspaceApiId: string;
-{{- else }}
+{{- if ne .TargetAPI "content" }}
   private projectId: string;
 {{- end }}
 
 {{- if eq .TargetAPI "content" }}
-  constructor(config: FluxClientConfig, workspaceApiId: string = '{{.WorkspaceAPIID}}') {
+  constructor(config: FluxClientConfig) {
 {{- else }}
   constructor(config: FluxClientConfig, projectId: string = '{{.ProjectID}}') {
 {{- end }}
     this.config = {
-      baseURL: config.baseURL || '{{.BaseURL}}',
       ...config,
+      baseURL: config.baseURL || '{{.BaseURL}}',
     };
-{{- if eq .TargetAPI "content" }}
-    this.workspaceApiId = workspaceApiId;
-{{- else }}
+{{- if ne .TargetAPI "content" }}
     this.projectId = projectId;
 {{- end }}
   }
@@ -452,7 +462,8 @@ export class FluxClient {
   private async request<T>(
     method: string,
     path: string,
-    body?: unknown
+    body?: unknown,
+    unwrap = true
   ): Promise<T> {
     const url = ` + "`${this.config.baseURL}${path}`" + `;
     const headers: Record<string, string> = {
@@ -493,7 +504,7 @@ export class FluxClient {
 
     const data = await response.json();
 {{- end }}
-    if (data && typeof data === 'object' && 'payload' in data) {
+    if (unwrap && data && typeof data === 'object' && 'payload' in data) {
       return (data as { payload: T }).payload;
     }
     return data as T;
@@ -503,27 +514,34 @@ export class FluxClient {
   // {{.Name}} methods
   {{.ApiID}} = {
 {{- if eq $.TargetAPI "content" }}
-    list: (filter?: {{.Name | pascal}}Filter): Promise<{{.Name | pascal}}ContentListResponse> => {
+    list: (options?: ContentListOptions): Promise<{{.Name | pascal}}ContentListResponse> => {
       const params = new URLSearchParams();
-      if (filter?.page) params.set('page', String(filter.page));
-      if (filter?.perPage) params.set('per_page', String(filter.perPage));
-      if (filter?.locale) params.set('locale', filter.locale);
-      if (filter?.createdAfter) params.set('created_after', filter.createdAfter);
-      if (filter?.createdBefore) params.set('created_before', filter.createdBefore);
-      if (filter?.sortBy) params.set('sort_by', filter.sortBy);
-      if (filter?.sortOrder) params.set('sort_order', filter.sortOrder);
+      if (options?.page) params.set('page', String(options.page));
+      if (options?.limit) params.set('limit', String(options.limit));
+      if (options?.locale) params.set('locale', options.locale);
+      if (options?.sort) params.set('sort', options.sort);
+      for (const filter of options?.filter ?? []) params.append('filter', filter);
+      if (options?.fields?.length) params.set('fields', options.fields.join(','));
+      if (options?.include?.length) params.set('include', options.include.join(','));
       const query = params.toString();
-      return this.request('GET', ` + "`/api/v1/content/${this.workspaceApiId}/{{.ApiID}}${query ? '?' + query : ''}`" + `);
+      return this.request('GET', ` + "`/api/v1/content/{{.ApiID}}${query ? '?' + query : ''}`" + `, undefined, false);
     },
 
-    getBySlug: (slug: string): Promise<{{.Name | pascal}}ContentItem> =>
-      this.request('GET', ` + "`/api/v1/content/${this.workspaceApiId}/{{.ApiID}}/${slug}`" + `),
+    getBySlug: (slug: string, options?: { locale?: string; include?: string[] }): Promise<{{.Name | pascal}}ContentItem> => {
+      const params = new URLSearchParams();
+      if (options?.locale) params.set('locale', options.locale);
+      if (options?.include?.length) params.set('include', options.include.join(','));
+      const query = params.toString();
+      return this.request('GET', ` + "`/api/v1/content/{{.ApiID}}/${encodeURIComponent(slug)}${query ? '?' + query : ''}`" + `);
+    },
 
-    getById: (id: string): Promise<{{.Name | pascal}}ContentItem> =>
-      this.request('GET', ` + "`/api/v1/content/${this.workspaceApiId}/{{.ApiID}}/id/${id}`" + `),
+    getById: (id: string, options?: { include?: string[] }): Promise<{{.Name | pascal}}ContentItem> => {
+      const query = options?.include?.length ? '?include=' + encodeURIComponent(options.include.join(',')) : '';
+      return this.request('GET', ` + "`/api/v1/content/{{.ApiID}}/id/${id}${query}`" + `);
+    },
 {{- else }}
     get: (id: string): Promise<{{.Name | pascal}}Document> =>
-      this.request('GET', ` + "`/api/v1/cms/projects/${this.projectId}/documents/${id}`" + `),
+      this.request('GET', ` + "`/api/v1/projects/${this.projectId}/documents/${id}`" + `),
 
     list: (filter?: {{.Name | pascal}}Filter): Promise<{{.Name | pascal}}ListResponse> => {
       const params = new URLSearchParams();
@@ -532,23 +550,23 @@ export class FluxClient {
       if (filter?.status) params.set('status', filter.status);
       if (filter?.sort) params.set('sort', filter.sort);
       const query = params.toString();
-      return this.request('GET', ` + "`/api/v1/cms/projects/${this.projectId}/schemas/{{.SchemaID}}/documents${query ? '?' + query : ''}`" + `);
+      return this.request('GET', ` + "`/api/v1/projects/${this.projectId}/schemas/{{.SchemaID}}/documents${query ? '?' + query : ''}`" + `);
     },
 
     create: (data: Create{{.Name | pascal}}Input, options?: { slug?: string; locale?: string; message?: string }): Promise<{{.Name | pascal}}Document> =>
-      this.request('POST', ` + "`/api/v1/cms/projects/${this.projectId}/schemas/{{.SchemaID}}/documents`" + `, { data, ...options }),
+      this.request('POST', ` + "`/api/v1/projects/${this.projectId}/schemas/{{.SchemaID}}/documents`" + `, { data, ...options }),
 
     update: (id: string, data: Update{{.Name | pascal}}Input, options?: { slug?: string; message?: string }): Promise<{{.Name | pascal}}Document> =>
-      this.request('PUT', ` + "`/api/v1/cms/projects/${this.projectId}/documents/${id}`" + `, { data, ...options }),
+      this.request('PUT', ` + "`/api/v1/projects/${this.projectId}/documents/${id}`" + `, { data, ...options }),
 
     delete: (id: string): Promise<void> =>
-      this.request('DELETE', ` + "`/api/v1/cms/projects/${this.projectId}/documents/${id}`" + `),
+      this.request('DELETE', ` + "`/api/v1/projects/${this.projectId}/documents/${id}`" + `),
 
     publish: (id: string): Promise<{{.Name | pascal}}Document> =>
-      this.request('POST', ` + "`/api/v1/cms/projects/${this.projectId}/documents/${id}/publish`" + `),
+      this.request('POST', ` + "`/api/v1/projects/${this.projectId}/documents/${id}/publish`" + `),
 
     archive: (id: string): Promise<{{.Name | pascal}}Document> =>
-      this.request('POST', ` + "`/api/v1/cms/projects/${this.projectId}/documents/${id}/archive`" + `),
+      this.request('POST', ` + "`/api/v1/projects/${this.projectId}/documents/${id}/archive`" + `),
 {{- end }}
   };
 {{end}}

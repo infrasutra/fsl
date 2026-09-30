@@ -13,36 +13,33 @@ var TypeMapping = map[string]string{
 	parser.TypeInt:      "number",
 	parser.TypeFloat:    "number",
 	parser.TypeBoolean:  "boolean",
-	parser.TypeDateTime: "string", // ISO 8601 string
-	parser.TypeDate:     "string", // YYYY-MM-DD string
+	parser.TypeDateTime: "string",
+	parser.TypeDate:     "string",
 	parser.TypeJSON:     "unknown",
 	parser.TypeRichText: "RichTextBlock[]",
 	parser.TypeImage:    "ImageAsset",
 	parser.TypeFile:     "FileAsset",
-	"Enum":              "string", // Inline enums become union types
+	"Enum":              "string",
 }
 
 // MapFieldType converts an FSL field to its TypeScript type
 func MapFieldType(field *parser.CompiledField) string {
-	// Handle inline enums
+
 	if field.Type == "Enum" && len(field.InlineEnum) > 0 {
 		return buildUnionType(field.InlineEnum)
 	}
 
-	// Handle relations
 	if field.IsRelation {
 		if field.Array {
-			return field.RelationTo + "[]"
+			return "RelationValue[]"
 		}
-		return field.RelationTo
+		return "RelationValue"
 	}
 
-	// Handle named enums (use the enum name as the type)
 	if tsType, ok := TypeMapping[field.Type]; ok {
 		return tsType
 	}
 
-	// Default: use the FSL type name (for custom types)
 	return field.Type
 }
 
@@ -53,15 +50,14 @@ func MapFieldTypeWithNullability(field *parser.CompiledField, strictNullChecks b
 	if field.Array {
 		elementType := baseType
 		if field.IsRelation {
-			// Relations already handled in MapFieldType
+
 			return baseType
 		}
 
 		if field.Type == "Enum" && len(field.InlineEnum) > 0 {
-			elementType = buildUnionType(field.InlineEnum)
+			elementType = "(" + buildUnionType(field.InlineEnum) + ")"
 		}
 
-		// Array type
 		if field.ArrayReq {
 			return elementType + "[]"
 		}
@@ -71,14 +67,12 @@ func MapFieldTypeWithNullability(field *parser.CompiledField, strictNullChecks b
 		return elementType + "[]"
 	}
 
-	// Non-array field
 	if !field.Required && strictNullChecks {
 		return baseType + " | null"
 	}
 	return baseType
 }
 
-// buildUnionType creates a TypeScript union type from string values
 func buildUnionType(values []string) string {
 	if len(values) == 0 {
 		return "string"
@@ -114,17 +108,24 @@ export interface FileAsset {
   mimeType?: string;
 }
 
-export interface RichTextBlock {
+export interface RichTextMark {
   type: string;
-  children?: RichTextBlock[];
-  text?: string;
-  [key: string]: unknown;
+  attrs?: Record<string, unknown>;
 }
 
-// Reference type for relations
+export interface RichTextBlock {
+  type: string;
+  content?: RichTextBlock[];
+  text?: string;
+  attrs?: Record<string, unknown>;
+  marks?: RichTextMark[];
+}
+
 export interface DocumentReference {
   id: string;
 }
+
+export type RelationValue = string | DocumentReference;
 `
 }
 
@@ -206,13 +207,23 @@ export interface ContentItem<T> {
   created_at: string;
   updated_at: string;
   published_at: string;
-  schema: SchemaRef;
+  included?: Record<string, unknown>;
 }
 
 export interface ContentListResponse<T> {
-  data: ContentItem<T>[];
+  payload: ContentItem<T>[];
   pagination: PaginationInfo;
   schema: SchemaRef;
+}
+
+export interface ContentListOptions {
+  page?: number;
+  limit?: number;
+  locale?: string;
+  sort?: string;
+  filter?: string[];
+  fields?: string[];
+  include?: string[];
 }
 `
 }
@@ -222,7 +233,9 @@ func ToPascalCase(s string) string {
 	if len(s) == 0 {
 		return s
 	}
-	parts := strings.FieldsFunc(s, func(r rune) bool { return r == '_' || r == '-' })
+	parts := strings.FieldsFunc(s, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9')
+	})
 	if len(parts) == 0 {
 		return s
 	}
