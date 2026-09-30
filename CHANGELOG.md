@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-01
+
 ### Fixed
 
 - `ValidateData` checks named enum values, in plain fields, lists and sections, and describes wrong values in plain words ("got a number") instead of Go type names.
