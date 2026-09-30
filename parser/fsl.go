@@ -347,7 +347,7 @@ func validatePrimitiveValue(fieldName string, value any, fieldType string, field
 		if !ok {
 			errors = append(errors, ValidationError{
 				Field:   fieldName,
-				Message: fmt.Sprintf("value must be a string, got %T", value),
+				Message: fmt.Sprintf("value must be a string, got %s", jsonTypeName(value)),
 			})
 		} else if fieldType == TypeString && strings.Contains(str, "\n") {
 			errors = append(errors, ValidationError{
@@ -371,7 +371,7 @@ func validatePrimitiveValue(fieldName string, value any, fieldType string, field
 		default:
 			errors = append(errors, ValidationError{
 				Field:   fieldName,
-				Message: fmt.Sprintf("value must be an integer, got %T", value),
+				Message: fmt.Sprintf("value must be an integer, got %s", jsonTypeName(value)),
 			})
 		}
 
@@ -382,7 +382,7 @@ func validatePrimitiveValue(fieldName string, value any, fieldType string, field
 		default:
 			errors = append(errors, ValidationError{
 				Field:   fieldName,
-				Message: fmt.Sprintf("value must be a number, got %T", value),
+				Message: fmt.Sprintf("value must be a number, got %s", jsonTypeName(value)),
 			})
 		}
 
@@ -390,7 +390,7 @@ func validatePrimitiveValue(fieldName string, value any, fieldType string, field
 		if _, ok := value.(bool); !ok {
 			errors = append(errors, ValidationError{
 				Field:   fieldName,
-				Message: fmt.Sprintf("value must be a boolean, got %T", value),
+				Message: fmt.Sprintf("value must be a boolean, got %s", jsonTypeName(value)),
 			})
 		}
 
@@ -461,7 +461,7 @@ func validatePrimitiveValue(fieldName string, value any, fieldType string, field
 			if !ok {
 				errors = append(errors, ValidationError{
 					Field:   fieldName,
-					Message: fmt.Sprintf("enum value must be a string, got %T", value),
+					Message: fmt.Sprintf("enum value must be a string, got %s", jsonTypeName(value)),
 				})
 			} else {
 				valid := false
@@ -769,7 +769,7 @@ func validateRelationReference(fieldName string, value any) []ValidationError {
 	default:
 		return []ValidationError{{
 			Field:   fieldName,
-			Message: fmt.Sprintf("relation reference must be a UUID string or object, got %T", value),
+			Message: fmt.Sprintf("relation reference must be a UUID string or object, got %s", jsonTypeName(value)),
 		}}
 	}
 	return nil
@@ -999,4 +999,22 @@ func namedEnumValues(schema *CompiledSchema, name string) ([]string, bool) {
 		}
 	}
 	return nil, false
+}
+
+func jsonTypeName(value any) string {
+	switch value.(type) {
+	case nil:
+		return "null"
+	case string:
+		return "text"
+	case bool:
+		return "true/false"
+	case float64, float32, int, int32, int64:
+		return "a number"
+	case []any:
+		return "a list"
+	case map[string]any:
+		return "an object"
+	}
+	return "an unsupported value"
 }

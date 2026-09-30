@@ -839,3 +839,21 @@ func TestValidateData_RequiredArrays(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateDataDescribesValuesInPlainWords(t *testing.T) {
+	compiled, err := ParseAndCompile("type Note {\n  title: String\n  count: Int\n}", "Note", "note", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	errs := ValidateData(map[string]any{"title": 3.0, "count": "three"}, compiled)
+	messages := map[string]string{}
+	for _, e := range errs {
+		messages[e.Field] = e.Message
+	}
+	if messages["title"] != "value must be a string, got a number" {
+		t.Errorf("title: %q", messages["title"])
+	}
+	if messages["count"] != "value must be an integer, got text" {
+		t.Errorf("count: %q", messages["count"])
+	}
+}
