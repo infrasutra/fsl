@@ -67,8 +67,14 @@ func (g *Generator) generateModels(schemas []*parser.CompiledSchema, config sdk.
 	buf.WriteString(g.sharedResponseTypes())
 	buf.WriteString("\n")
 
+	emitted := map[string]bool{}
 	for _, schema := range schemas {
 		for _, enum := range schema.Enums {
+			key := enum.Name + "=" + strings.Join(enum.Values, "|")
+			if emitted[key] {
+				continue
+			}
+			emitted[key] = true
 			buf.WriteString(g.generateEnumType(&enum))
 			buf.WriteString("\n")
 		}

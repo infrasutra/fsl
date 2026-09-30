@@ -196,3 +196,16 @@ func TestGenerateTypedSliceUnions(t *testing.T) {
 		t.Fatalf("types.ts missing typed create/update input slice zone field")
 	}
 }
+
+func TestGenerateSharedEnumOnce(t *testing.T) {
+	page := func(name string) *parser.CompiledSchema {
+		return &parser.CompiledSchema{Name: name, ApiID: strings.ToLower(name), Enums: []parser.CompiledEnum{{Name: "Tone", Values: []string{"calm", "bold"}}}}
+	}
+	generated, err := New().Generate([]*parser.CompiledSchema{page("Home"), page("About")}, sdk.GeneratorConfig{})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if n := strings.Count(generated.Files["types.ts"], "export type Tone ="); n != 1 {
+		t.Fatalf("expected one Tone declaration, got %d", n)
+	}
+}
