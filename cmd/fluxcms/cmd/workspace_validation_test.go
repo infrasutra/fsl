@@ -54,3 +54,13 @@ type Hero {
 	assert.True(t, compiled.Components[0].Shared)
 	assert.Equal(t, "Opening section", compiled.Components[0].Description)
 }
+
+func TestCompileSchemasByType_UsesSectionsFromOtherFiles(t *testing.T) {
+	landing := parser.ParseWithDiagnostics("type Landing {\n  sections: JSON! @slices(hero: Hero)\n}").Schema
+	sections := parser.ParseWithDiagnostics("enum Tone { calm, bold }\n\ntype Hero {\n  tone: Tone\n}").Schema
+	compiled, names, err := compileSchemasByType([]*parser.Schema{landing, sections})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"Hero", "Landing"}, names)
+	assert.True(t, compiled["Landing"].Components[0].Shared)
+	assert.Len(t, compiled["Landing"].Enums, 1)
+}

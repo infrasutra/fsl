@@ -33,6 +33,7 @@ func workspaceOptions(file string, fileSchemas map[string]*parser.Schema) parser
 	}
 	sort.Strings(names)
 	sort.SliceStable(library.Types, func(i, j int) bool { return library.Types[i].Name < library.Types[j].Name })
+	sort.SliceStable(library.Enums, func(i, j int) bool { return library.Enums[i].Name < library.Enums[j].Name })
 	return parser.Options{ExternalTypes: names, Library: library}
 }
 
