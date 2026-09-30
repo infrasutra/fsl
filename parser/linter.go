@@ -33,11 +33,12 @@ type LintResult struct {
 
 // LinterConfig controls which rules are enabled
 type LinterConfig struct {
-	NamingConvention      bool // types PascalCase, fields camelCase
-	UnusedTypes           bool // warn on types not referenced by other types
-	RequiredFieldOrdering bool // required fields before optional
-	RelationCardinality   bool // warn on relations without explicit array marker
-	MaxFieldCount         int  // warn if a type has too many fields (0 = disabled)
+	NamingConvention      bool    // types PascalCase, fields camelCase
+	UnusedTypes           bool    // warn on types not referenced by other types
+	RequiredFieldOrdering bool    // required fields before optional
+	RelationCardinality   bool    // warn on relations without explicit array marker
+	MaxFieldCount         int     // warn if a type has too many fields (0 = disabled)
+	Workspace             *Schema // types from other files, whose relations and @slices count as uses
 }
 
 // DefaultLinterConfig returns a LinterConfig with all rules enabled and sensible defaults
@@ -59,7 +60,7 @@ func Lint(schema *Schema, config LinterConfig) []LintResult {
 		results = append(results, lintNamingConvention(schema)...)
 	}
 	if config.UnusedTypes {
-		results = append(results, lintUnusedTypes(schema)...)
+		results = append(results, lintUnusedTypes(schema, config.Workspace)...)
 	}
 	if config.RequiredFieldOrdering {
 		results = append(results, lintRequiredFieldOrdering(schema)...)
@@ -102,15 +103,26 @@ func lintNamingConvention(schema *Schema) []LintResult {
 	return results
 }
 
-func lintUnusedTypes(schema *Schema) []LintResult {
+func lintUnusedTypes(schema, workspace *Schema) []LintResult {
 	if len(schema.Types) <= 1 {
 		return nil
 	}
 	referenced := make(map[string]bool)
-	for _, typeDef := range schema.Types {
-		for _, field := range typeDef.Fields {
-			if field.IsRelation {
-				referenced[field.Type] = true
+	for _, source := range []*Schema{schema, workspace} {
+		if source == nil {
+			continue
+		}
+		for _, typeDef := range source.Types {
+			for _, field := range typeDef.Fields {
+				if field.IsRelation {
+					referenced[field.Type] = true
+				}
+				mapping, _ := field.Decorators[DecSlices].(map[string]any)
+				for _, target := range mapping {
+					if name, ok := target.(string); ok {
+						referenced[name] = true
+					}
+				}
 			}
 		}
 	}
@@ -119,7 +131,7 @@ func lintUnusedTypes(schema *Schema) []LintResult {
 	for _, typeDef := range schema.Types {
 		if !referenced[typeDef.Name] {
 			r := rule
-			r.Message = fmt.Sprintf("type '%s' is never referenced as a relation target by any other type", typeDef.Name)
+			r.Message = fmt.Sprintf("type '%s' is not used by any relation or @slices field", typeDef.Name)
 			results = append(results, LintResult{Rule: r, Message: r.Message, TypeName: typeDef.Name})
 		}
 	}

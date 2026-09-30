@@ -52,7 +52,7 @@ func runLint(cmd *cobra.Command, args []string) error {
 		fileContents[file] = string(content)
 	}
 
-	diagResults, _ := parseFilesWithWorkspaceTypes(fileContents)
+	diagResults, options := parseFilesWithWorkspaceTypes(fileContents)
 
 	lintCfg := buildLintConfig()
 
@@ -72,7 +72,9 @@ func runLint(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		results := parser.Lint(diagResult.Schema, lintCfg)
+		fileCfg := lintCfg
+		fileCfg.Workspace = options[file].Library
+		results := parser.Lint(diagResult.Schema, fileCfg)
 		if len(results) == 0 {
 			fmt.Printf("\033[32m✓\033[0m %s\n", file)
 			continue

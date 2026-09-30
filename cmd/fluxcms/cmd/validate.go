@@ -90,14 +90,16 @@ func runValidate(cmd *cobra.Command, args []string) error {
 		fileContents[file] = string(content)
 	}
 
-	diagResultsByFile, _ := parseFilesWithWorkspaceTypes(fileContents)
+	diagResultsByFile, options := parseFilesWithWorkspaceTypes(fileContents)
 	for file, diagResult := range diagResultsByFile {
 		result := resultsByFile[file]
 		result.Valid = diagResult.Valid
 		result.Diagnostics = diagResult.Diagnostics
 
 		if validateLint && diagResult.Valid && diagResult.Schema != nil {
-			lintResults := parser.Lint(diagResult.Schema, parser.DefaultLinterConfig())
+			lintCfg := parser.DefaultLinterConfig()
+			lintCfg.Workspace = options[file].Library
+			lintResults := parser.Lint(diagResult.Schema, lintCfg)
 			for _, lr := range lintResults {
 				severity := parser.SeverityWarning
 				if lr.Rule.Severity == parser.LintHint {

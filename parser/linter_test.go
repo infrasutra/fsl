@@ -107,6 +107,32 @@ func TestLint_UnusedTypes_Referenced(t *testing.T) {
 	}
 }
 
+func TestLint_UnusedTypes_SlicesAndOtherFilesCount(t *testing.T) {
+	sections := mustParseForLint(t, `
+		type Faq {
+			questions: JSON! @slices(question: Question)
+		}
+		type Question {
+			text: String!
+		}
+		type Unused {
+			text: String!
+		}
+	`)
+	page := mustParseForLint(t, `
+		type Page {
+			sections: JSON @slices(faq: Faq)
+		}
+	`)
+	var unused []string
+	for _, r := range Lint(sections, LinterConfig{UnusedTypes: true, Workspace: page}) {
+		unused = append(unused, r.TypeName)
+	}
+	if strings.Join(unused, ",") != "Unused" {
+		t.Errorf("expected only Unused to be flagged, got %v", unused)
+	}
+}
+
 func TestLint_UnusedTypes_SingleType_Skipped(t *testing.T) {
 	schema := mustParseForLint(t, `
 		type Article {
