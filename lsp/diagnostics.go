@@ -11,7 +11,7 @@ import (
 // GetDiagnostics returns LSP diagnostics for a document
 func GetDiagnostics(doc *Document, workspaceDocs []*Document) []Diagnostic {
 	externalTypes := collectExternalTypes(doc, workspaceDocs)
-	result := parser.ParseWithDiagnosticsAndExternalTypes(doc.Content, externalTypes)
+	result := parser.ParseWithDiagnosticsAndOptions(doc.Content, parser.Options{ExternalTypes: externalTypes, Library: collectLibrary(doc, workspaceDocs)})
 	if result == nil {
 		return []Diagnostic{}
 	}
@@ -53,7 +53,6 @@ func GetDiagnostics(doc *Document, workspaceDocs []*Document) []Diagnostic {
 		})
 	}
 
-	// Run lint rules and append as Warning/Hint diagnostics
 	lintResults := parser.Lint(schema, parser.DefaultLinterConfig())
 	for _, lr := range lintResults {
 		sev := mapLintSeverity(lr.Rule.Severity)
@@ -68,6 +67,20 @@ func GetDiagnostics(doc *Document, workspaceDocs []*Document) []Diagnostic {
 	}
 
 	return diagnostics
+}
+
+func collectLibrary(current *Document, docs []*Document) *parser.Schema {
+	library := &parser.Schema{}
+	for _, doc := range docs {
+		if doc == nil || doc.URI == current.URI {
+			continue
+		}
+		if schema := doc.GetSchema(); schema != nil {
+			library.Types = append(library.Types, schema.Types...)
+			library.Enums = append(library.Enums, schema.Enums...)
+		}
+	}
+	return library
 }
 
 func collectExternalTypes(current *Document, docs []*Document) []string {
@@ -105,7 +118,7 @@ func mapLintSeverity(s parser.LintSeverity) DiagnosticSeverity {
 }
 
 func findLintNameRange(doc *Document, lr parser.LintResult) Range {
-	// If FieldName is set, search for "<FieldName>:" after the line containing "type <TypeName>"
+
 	if lr.FieldName != "" && lr.TypeName != "" {
 		inType := false
 		for lineIndex, line := range doc.Lines {
@@ -116,7 +129,7 @@ func findLintNameRange(doc *Document, lr parser.LintResult) Range {
 				}
 				continue
 			}
-			// Check if we've left the type block
+
 			if trimmed == "}" {
 				inType = false
 				continue
@@ -131,7 +144,6 @@ func findLintNameRange(doc *Document, lr parser.LintResult) Range {
 		}
 	}
 
-	// If only TypeName is set, search for "type <TypeName>" or "enum <TypeName>"
 	if lr.TypeName != "" && lr.FieldName == "" {
 		for lineIndex, line := range doc.Lines {
 			trimmed := strings.TrimSpace(line)
@@ -147,7 +159,6 @@ func findLintNameRange(doc *Document, lr parser.LintResult) Range {
 		}
 	}
 
-	// Fallback: find first occurrence of the quoted name
 	name := extractFirstQuoted(lr.Message)
 	if name == "" {
 		return Range{}
@@ -205,8 +216,8 @@ func ConvertDiagnostic(d parser.Diagnostic) Diagnostic {
 	return Diagnostic{
 		Range: Range{
 			Start: Position{
-				Line:      d.StartLine - 1,   // Convert to 0-indexed
-				Character: d.StartColumn - 1, // Convert to 0-indexed
+				Line:      d.StartLine - 1,
+				Character: d.StartColumn - 1,
 			},
 			End: Position{
 				Line:      d.EndLine - 1,

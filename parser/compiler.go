@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 )
 
@@ -48,8 +49,10 @@ type CompiledSliceType struct {
 
 // CompiledComponent captures fields for a reusable component type.
 type CompiledComponent struct {
-	Name   string          `json:"name"`
-	Fields []CompiledField `json:"fields"`
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"` // From @description on the type
+	Shared      bool            `json:"shared,omitempty"`      // Defined in the section library
+	Fields      []CompiledField `json:"fields"`
 }
 
 // CompiledRelation holds relation metadata for the schema
@@ -70,11 +73,16 @@ type CompiledEnum struct {
 
 // Compile converts parsed Schema to CompiledSchema
 func Compile(schema *Schema, name, apiID string, singleton bool) (*CompiledSchema, error) {
+	return CompileWithOptions(schema, name, apiID, singleton, Options{})
+}
+
+// CompileWithOptions converts a parsed Schema to a CompiledSchema, resolving
+// @slices targets in the schema first and then in opts.Library.
+func CompileWithOptions(schema *Schema, name, apiID string, singleton bool, opts Options) (*CompiledSchema, error) {
 	if len(schema.Types) == 0 {
 		return nil, fmt.Errorf("schema must have at least one type definition")
 	}
 
-	// Find the type by name, or use the first type if name matches first type or is custom name
 	var typeDef *TypeDef
 	for i := range schema.Types {
 		if schema.Types[i].Name == name {
@@ -82,8 +90,7 @@ func Compile(schema *Schema, name, apiID string, singleton bool) (*CompiledSchem
 			break
 		}
 	}
-	// If no type with matching name found, use the first type
-	// (for backward compatibility when name is a custom schema name)
+
 	if typeDef == nil {
 		typeDef = &schema.Types[0]
 	}
@@ -104,7 +111,6 @@ func Compile(schema *Schema, name, apiID string, singleton bool) (*CompiledSchem
 		typeIndex[schema.Types[i].Name] = &schema.Types[i]
 	}
 
-	// Check for type-level decorators
 	for _, dec := range typeDef.Decorators {
 		switch dec.Name {
 		case DecCollection:
@@ -130,12 +136,17 @@ func Compile(schema *Schema, name, apiID string, singleton bool) (*CompiledSchem
 		}
 	}
 
-	// Compile named enums
 	for _, enumDef := range schema.Enums {
 		compiled.Enums = append(compiled.Enums, CompiledEnum(enumDef))
 	}
+	if opts.Library != nil {
+		for _, enumDef := range opts.Library.Enums {
+			if !slices.ContainsFunc(compiled.Enums, func(e CompiledEnum) bool { return e.Name == enumDef.Name }) {
+				compiled.Enums = append(compiled.Enums, CompiledEnum(enumDef))
+			}
+		}
+	}
 
-	// Compile fields
 	componentTargets := make(map[string]bool)
 	for _, field := range typeDef.Fields {
 		compiledField, err := compileField(field)
@@ -147,7 +158,6 @@ func Compile(schema *Schema, name, apiID string, singleton bool) (*CompiledSchem
 			componentTargets[sliceType.Schema] = true
 		}
 
-		// Compile relation metadata
 		if field.IsRelation {
 			compiledField.RelationTo = field.Type
 
@@ -158,7 +168,6 @@ func Compile(schema *Schema, name, apiID string, singleton bool) (*CompiledSchem
 				IsRequired: field.Required || field.ArrayReq,
 			}
 
-			// Extract relation options from decorator
 			if args, ok := field.Decorators[DecRelation].(map[string]any); ok {
 				if inverse, ok := args["inverse"].(string); ok {
 					relation.Inverse = inverse
@@ -174,13 +183,12 @@ func Compile(schema *Schema, name, apiID string, singleton bool) (*CompiledSchem
 		compiled.Fields = append(compiled.Fields, compiledField)
 	}
 
-	components, err := compileSliceComponents(componentTargets, typeIndex)
+	components, err := compileSliceComponents(componentTargets, typeIndex, libraryIndex(opts.Library))
 	if err != nil {
 		return nil, err
 	}
 	compiled.Components = components
 
-	// Compute checksum
 	compiled.Checksum = ComputeChecksum(compiled)
 
 	return compiled, nil
@@ -189,7 +197,7 @@ func Compile(schema *Schema, name, apiID string, singleton bool) (*CompiledSchem
 // ComputeChecksum generates SHA-256 checksum of the compiled schema
 // Excludes version and checksum fields from the hash
 func ComputeChecksum(cs *CompiledSchema) string {
-	// Create a copy without version and checksum for hashing
+
 	hashData := struct {
 		Name        string              `json:"name"`
 		ApiID       string              `json:"apiId"`
@@ -214,14 +222,12 @@ func ComputeChecksum(cs *CompiledSchema) string {
 		Components:  cs.Components,
 	}
 
-	// Marshal to JSON for consistent hashing
 	data, err := json.Marshal(hashData)
 	if err != nil {
-		// Fallback to empty string if marshaling fails
+
 		return ""
 	}
 
-	// Compute SHA-256 hash
 	hash := sha256.Sum256(data)
 	return hex.EncodeToString(hash[:])
 }
@@ -241,7 +247,7 @@ func CompileMultiple(schema *Schema, baseApiID string, singleton bool) ([]*Compi
 	}
 
 	for i, typeDef := range schema.Types {
-		// Generate unique API ID for each type
+
 		apiID := fmt.Sprintf("%s_%d", baseApiID, i)
 		if baseApiID == "" {
 			apiID = fmt.Sprintf("type_%d", i)
@@ -256,7 +262,6 @@ func CompileMultiple(schema *Schema, baseApiID string, singleton bool) ([]*Compi
 			Version:    1,
 		}
 
-		// Compile fields
 		componentTargets := make(map[string]bool)
 		for _, field := range typeDef.Fields {
 			compiledField, err := compileField(field)
@@ -271,14 +276,12 @@ func CompileMultiple(schema *Schema, baseApiID string, singleton bool) ([]*Compi
 			cs.Fields = append(cs.Fields, compiledField)
 		}
 
-		// Compile slice components
-		components, err := compileSliceComponents(componentTargets, typeIndex)
+		components, err := compileSliceComponents(componentTargets, typeIndex, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to compile slice components for type '%s': %w", typeDef.Name, err)
 		}
 		cs.Components = components
 
-		// Compute checksum
 		cs.Checksum = ComputeChecksum(cs)
 
 		compiled = append(compiled, cs)
@@ -287,22 +290,27 @@ func CompileMultiple(schema *Schema, baseApiID string, singleton bool) ([]*Compi
 	return compiled, nil
 }
 
-func compileSliceComponents(initialTargets map[string]bool, typeIndex map[string]*TypeDef) ([]CompiledComponent, error) {
+func compileSliceComponents(initialTargets map[string]bool, typeIndex, library map[string]*TypeDef) ([]CompiledComponent, error) {
 	if len(initialTargets) == 0 {
 		return []CompiledComponent{}, nil
 	}
 
-	queue := make([]string, 0, len(initialTargets))
-	for name := range initialTargets {
-		queue = append(queue, name)
+	type target struct {
+		name        string
+		libraryOnly bool
 	}
-	sort.Strings(queue)
+	queue := make([]target, 0, len(initialTargets))
+	for name := range initialTargets {
+		queue = append(queue, target{name: name})
+	}
+	sort.Slice(queue, func(i, j int) bool { return queue[i].name < queue[j].name })
 
 	visited := make(map[string]bool, len(initialTargets))
 	compiledByName := make(map[string]CompiledComponent, len(initialTargets))
 
 	for len(queue) > 0 {
-		componentName := queue[0]
+		next := queue[0]
+		componentName := next.name
 		queue = queue[1:]
 
 		if visited[componentName] {
@@ -310,14 +318,26 @@ func compileSliceComponents(initialTargets map[string]bool, typeIndex map[string
 		}
 		visited[componentName] = true
 
-		typeDef, ok := typeIndex[componentName]
-		if !ok {
+		typeDef, local := typeIndex[componentName]
+		if next.libraryOnly {
+			local = false
+		}
+		if !local {
+			typeDef = library[componentName]
+		}
+		if typeDef == nil {
 			return nil, fmt.Errorf("slice component type '%s' not found", componentName)
 		}
 
 		component := CompiledComponent{
 			Name:   componentName,
+			Shared: !local,
 			Fields: make([]CompiledField, 0, len(typeDef.Fields)),
+		}
+		for _, dec := range typeDef.Decorators {
+			if dec.Name == DecDescription && len(dec.Args) > 0 {
+				component.Description, _ = dec.Args[0].(string)
+			}
 		}
 
 		for _, field := range typeDef.Fields {
@@ -329,7 +349,7 @@ func compileSliceComponents(initialTargets map[string]bool, typeIndex map[string
 
 			for _, sliceType := range compiledField.Slices {
 				if !visited[sliceType.Schema] {
-					queue = append(queue, sliceType.Schema)
+					queue = append(queue, target{name: sliceType.Schema, libraryOnly: component.Shared})
 				}
 			}
 		}
@@ -425,7 +445,6 @@ func (cs *CompiledSchema) HasChanges(other *CompiledSchema) bool {
 		return true
 	}
 
-	// Compare checksums (excluding version)
 	thisChecksum := ComputeChecksum(cs)
 	otherChecksum := ComputeChecksum(other)
 

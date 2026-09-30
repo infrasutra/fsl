@@ -110,21 +110,19 @@ func init() {
 	generateOpenAPICmd.Flags().StringVar(&generateExportFormat, "format", "openapi", "Export format: openapi or jsonschema")
 }
 
-// generateParams holds the configuration for the shared generate logic.
 type generateParams struct {
-	language      string        // "TypeScript" or "Python"
-	outputDefault string        // default output directory
-	outputConfig  string        // output directory from config
-	generator     sdk.Generator // the language-specific generator
+	language      string
+	outputDefault string
+	outputConfig  string
+	generator     sdk.Generator
 	genConfig     sdk.GeneratorConfig
 }
 
-// runGenerate contains the shared logic for SDK generation.
 func runGenerate(params generateParams) error {
 	target := params.genConfig.TargetAPI
 	switch target {
 	case "content":
-		// valid
+
 	case "cms":
 		return fmt.Errorf("CMS SDK generation requires schema IDs and should be generated via the server SDK endpoint")
 	default:
@@ -186,14 +184,14 @@ func runGenerate(params generateParams) error {
 }
 
 func runGenerateTypescript(cmd *cobra.Command, args []string) error {
-	// Determine client type: flag takes precedence, then config file
+
 	client := generateClient
 	if cfg := GetConfig(); cfg != nil && cfg.Output.TypeScript.Client != "" && !cmd.Flags().Changed("client") {
 		client = cfg.Output.TypeScript.Client
 	}
 	switch client {
 	case "fetch", "axios":
-		// valid
+
 	default:
 		return fmt.Errorf("unsupported client %q: must be fetch or axios", client)
 	}
@@ -329,7 +327,7 @@ func loadCompiledSchemas(schemaPath string) ([]*parser.CompiledSchema, error) {
 		fileContents[file] = string(content)
 	}
 
-	results := parseFilesWithWorkspaceTypes(fileContents)
+	results, options := parseFilesWithWorkspaceTypes(fileContents)
 
 	compiledSchemas := make([]*parser.CompiledSchema, 0)
 	for _, file := range files {
@@ -344,7 +342,7 @@ func loadCompiledSchemas(schemaPath string) ([]*parser.CompiledSchema, error) {
 
 		for _, typeDef := range result.Schema.Types {
 			derived := deriveApiID(typeDef.Name)
-			compiled, compileErr := parser.Compile(result.Schema, typeDef.Name, derived, false)
+			compiled, compileErr := parser.CompileWithOptions(result.Schema, typeDef.Name, derived, false, options[file])
 			if compileErr != nil {
 				return nil, fmt.Errorf("failed to compile schema %s in %s: %w", typeDef.Name, file, compileErr)
 			}

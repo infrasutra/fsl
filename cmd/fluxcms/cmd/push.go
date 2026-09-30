@@ -43,7 +43,6 @@ func init() {
 	pushCmd.Flags().BoolVar(&pushForce, "force", false, "Push even if validation produces warnings")
 }
 
-// schemaSyncRequest is the payload sent to /api/v1/schemas/sync.
 type schemaSyncRequest struct {
 	Name    string `json:"name"`
 	Content string `json:"content"`
@@ -59,7 +58,6 @@ func runPush(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Found %d schema file(s) in %s\n\n", len(files), schemaDir)
 
-	// Validate all files first (fail fast).
 	type fileEntry struct {
 		path    string
 		content string
@@ -81,7 +79,7 @@ func runPush(cmd *cobra.Command, args []string) error {
 		fileContents[f] = string(content)
 	}
 
-	results := parseFilesWithWorkspaceTypes(fileContents)
+	results, _ := parseFilesWithWorkspaceTypes(fileContents)
 
 	for _, f := range files {
 		content, ok := fileContents[f]
@@ -141,7 +139,6 @@ func runPush(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Push to server.
 	client, err := newAPIClient()
 	if err != nil {
 		return err
@@ -164,7 +161,6 @@ func runPush(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		// Try to extract a server-side message if present.
 		var respMsg struct {
 			Message string `json:"message"`
 		}
@@ -187,13 +183,12 @@ func runPush(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// schemaName derives a schema name from a file path relative to the schema directory.
 func schemaName(filePath, schemaDir string) string {
 	rel, err := filepath.Rel(schemaDir, filePath)
 	if err != nil {
 		rel = filepath.Base(filePath)
 	}
-	// Strip .fsl extension and convert path separators to dots.
+
 	rel = strings.TrimSuffix(rel, ".fsl")
 	rel = strings.ReplaceAll(rel, string(filepath.Separator), ".")
 	return rel

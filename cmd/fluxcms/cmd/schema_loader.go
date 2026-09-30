@@ -58,7 +58,7 @@ func loadSchemas(path string) ([]*parser.Schema, error) {
 		fileContents[file] = string(content)
 	}
 
-	results := parseFilesWithWorkspaceTypes(fileContents)
+	results, _ := parseFilesWithWorkspaceTypes(fileContents)
 
 	var schemas []*parser.Schema
 	for _, file := range files {

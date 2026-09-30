@@ -6,35 +6,48 @@ import (
 	"github.com/infrasutra/fsl/parser"
 )
 
-func parseFilesWithWorkspaceTypes(fileContents map[string]string) map[string]*parser.DiagnosticsResult {
-	allTypes := make(map[string]struct{})
-	fileTypes := make(map[string]map[string]struct{}, len(fileContents))
-
-	for file, content := range fileContents {
-		result := parser.ParseWithDiagnostics(content)
-		current := make(map[string]struct{})
-		if result.Schema != nil {
-			for _, typeDef := range result.Schema.Types {
-				current[typeDef.Name] = struct{}{}
-				allTypes[typeDef.Name] = struct{}{}
+func workspaceOptions(file string, fileSchemas map[string]*parser.Schema) parser.Options {
+	local := map[string]bool{}
+	if schema := fileSchemas[file]; schema != nil {
+		for _, typeDef := range schema.Types {
+			local[typeDef.Name] = true
+		}
+	}
+	external := map[string]bool{}
+	library := &parser.Schema{}
+	for other, schema := range fileSchemas {
+		if other == file || schema == nil {
+			continue
+		}
+		library.Types = append(library.Types, schema.Types...)
+		library.Enums = append(library.Enums, schema.Enums...)
+		for _, typeDef := range schema.Types {
+			if !local[typeDef.Name] {
+				external[typeDef.Name] = true
 			}
 		}
-		fileTypes[file] = current
+	}
+	names := make([]string, 0, len(external))
+	for name := range external {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	sort.SliceStable(library.Types, func(i, j int) bool { return library.Types[i].Name < library.Types[j].Name })
+	return parser.Options{ExternalTypes: names, Library: library}
+}
+
+func parseFilesWithWorkspaceTypes(fileContents map[string]string) (map[string]*parser.DiagnosticsResult, map[string]parser.Options) {
+	fileSchemas := make(map[string]*parser.Schema, len(fileContents))
+	for file, content := range fileContents {
+		fileSchemas[file] = parser.ParseWithDiagnostics(content).Schema
 	}
 
 	results := make(map[string]*parser.DiagnosticsResult, len(fileContents))
+	options := make(map[string]parser.Options, len(fileContents))
 	for file, content := range fileContents {
-		externalTypes := make([]string, 0, len(allTypes))
-		for typeName := range allTypes {
-			if _, isLocalType := fileTypes[file][typeName]; isLocalType {
-				continue
-			}
-			externalTypes = append(externalTypes, typeName)
-		}
-		sort.Strings(externalTypes)
-
-		results[file] = parser.ParseWithDiagnosticsAndExternalTypes(content, externalTypes)
+		options[file] = workspaceOptions(file, fileSchemas)
+		results[file] = parser.ParseWithDiagnosticsAndOptions(content, options[file])
 	}
 
-	return results
+	return results, options
 }
