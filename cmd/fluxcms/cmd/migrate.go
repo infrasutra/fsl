@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -520,12 +521,17 @@ func writeSchemaDiffGroup(out io.Writer, label string, changes []parser.SchemaCh
 
 func compileSchemasByType(schemas []*parser.Schema) (map[string]*parser.CompiledSchema, []string, error) {
 	compiled := make(map[string]*parser.CompiledSchema)
-	for _, schema := range schemas {
+	fileSchemas := make(map[string]*parser.Schema, len(schemas))
+	for i, schema := range schemas {
+		fileSchemas[strconv.Itoa(i)] = schema
+	}
+	for i, schema := range schemas {
+		options := workspaceOptions(strconv.Itoa(i), fileSchemas)
 		for _, schemaType := range schema.Types {
 			if _, exists := compiled[schemaType.Name]; exists {
 				return nil, nil, fmt.Errorf("type '%s' defined multiple times", schemaType.Name)
 			}
-			result, err := parser.Compile(schema, schemaType.Name, schemaType.Name, false)
+			result, err := parser.CompileWithOptions(schema, schemaType.Name, schemaType.Name, false, options)
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to compile type '%s': %w", schemaType.Name, err)
 			}

@@ -2,6 +2,9 @@ package lsp
 
 import (
 	"encoding/json"
+	"net/url"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -338,12 +341,56 @@ func (h *Handler) handleRename(params json.RawMessage) (interface{}, error) {
 }
 
 func (h *Handler) publishDiagnostics(uri string) {
-	doc := h.server.GetDocuments().Get(uri)
-	if doc == nil {
+	if h.server.GetDocuments().Get(uri) == nil {
 		return
 	}
+	open := h.server.GetDocuments().All()
+	for _, doc := range open {
+		if doc.URI == uri || documentDirectory(doc.URI) == documentDirectory(uri) {
+			h.server.PublishDiagnostics(doc.URI, GetDiagnostics(doc, schemaDirectoryDocuments(doc, open)))
+		}
+	}
+}
 
-	allDocs := h.server.GetDocuments().All()
-	diagnostics := GetDiagnostics(doc, allDocs)
-	h.server.PublishDiagnostics(uri, diagnostics)
+func documentDirectory(uri string) string {
+	if path, ok := documentPath(uri); ok {
+		return filepath.Dir(path)
+	}
+	return ""
+}
+
+func documentPath(uri string) (string, bool) {
+	parsed, err := url.Parse(uri)
+	if err != nil || parsed.Scheme != "file" {
+		return "", false
+	}
+	return filepath.FromSlash(parsed.Path), true
+}
+
+func schemaDirectoryDocuments(doc *Document, open []*Document) []*Document {
+	dir := documentDirectory(doc.URI)
+	docs := []*Document{}
+	seen := map[string]bool{}
+	for _, other := range open {
+		if documentDirectory(other.URI) == dir {
+			docs = append(docs, other)
+			if path, ok := documentPath(other.URI); ok {
+				seen[path] = true
+			}
+		}
+	}
+	if dir == "" {
+		return docs
+	}
+	entries, _ := os.ReadDir(dir)
+	for _, entry := range entries {
+		path := filepath.Join(dir, entry.Name())
+		if entry.IsDir() || filepath.Ext(path) != ".fsl" || seen[path] {
+			continue
+		}
+		if content, err := os.ReadFile(path); err == nil {
+			docs = append(docs, NewDocument((&url.URL{Scheme: "file", Path: filepath.ToSlash(path)}).String(), string(content), 0))
+		}
+	}
+	return docs
 }

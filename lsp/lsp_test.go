@@ -2,6 +2,9 @@ package lsp
 
 import (
 	"encoding/json"
+	"net/url"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/infrasutra/fsl/parser"
@@ -600,4 +603,16 @@ func TestGetDiagnostics_SectionsFromAnotherFile(t *testing.T) {
 
 	alone := NewDocument("file:///alone.fsl", "type Landing {\n  sections: JSON! @slices(hero: Hero)\n}", 1)
 	assert.NotEmpty(t, GetDiagnostics(alone, []*Document{alone}))
+}
+
+func TestSchemaDirectoryDocuments(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "sections.fsl"), []byte("type Hero { heading: String! }"), 0o644))
+	uri := (&url.URL{Scheme: "file", Path: filepath.ToSlash(filepath.Join(dir, "landing.fsl"))}).String()
+	landing := NewDocument(uri, "type Landing {\n  sections: JSON! @slices(hero: Hero)\n}", 1)
+	elsewhere := NewDocument("file:///other/project/hero.fsl", "type Hero { title: String }", 1)
+
+	docs := schemaDirectoryDocuments(landing, []*Document{landing, elsewhere})
+	assert.Len(t, docs, 2)
+	assert.Empty(t, GetDiagnostics(landing, docs))
 }
