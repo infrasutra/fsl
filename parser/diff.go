@@ -458,6 +458,8 @@ func isBreakingDecoratorRemoval(decName string) bool {
 
 func isBreakingDecoratorAddition(decName string, value any) bool {
 	switch decName {
+	case DecSlices:
+		return true
 	case DecRequired:
 		return true
 	case DecMaxLength, DecMinLength:
@@ -475,6 +477,15 @@ func isBreakingDecoratorAddition(decName string, value any) bool {
 
 func isBreakingDecoratorChange(decName string, from, to any) bool {
 	switch decName {
+	case DecSlices:
+		fromSlices, _ := from.(map[string]any)
+		toSlices, _ := to.(map[string]any)
+		for key, target := range fromSlices {
+			if toSlices[key] != target {
+				return true
+			}
+		}
+		return false
 	case DecMaxLength:
 
 		fromLen, ok1 := toInt64Value(from)

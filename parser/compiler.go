@@ -139,13 +139,6 @@ func CompileWithOptions(schema *Schema, name, apiID string, singleton bool, opts
 	for _, enumDef := range schema.Enums {
 		compiled.Enums = append(compiled.Enums, CompiledEnum(enumDef))
 	}
-	if opts.Library != nil {
-		for _, enumDef := range opts.Library.Enums {
-			if !slices.ContainsFunc(compiled.Enums, func(e CompiledEnum) bool { return e.Name == enumDef.Name }) {
-				compiled.Enums = append(compiled.Enums, CompiledEnum(enumDef))
-			}
-		}
-	}
 
 	componentTargets := make(map[string]bool)
 	for _, field := range typeDef.Fields {
@@ -188,6 +181,7 @@ func CompileWithOptions(schema *Schema, name, apiID string, singleton bool, opts
 		return nil, err
 	}
 	compiled.Components = components
+	compiled.Enums = append(compiled.Enums, sharedEnums(components, compiled.Enums, opts.Library)...)
 
 	compiled.Checksum = ComputeChecksum(compiled)
 
@@ -290,6 +284,27 @@ func CompileMultiple(schema *Schema, baseApiID string, singleton bool) ([]*Compi
 	return compiled, nil
 }
 
+func sharedEnums(components []CompiledComponent, local []CompiledEnum, library *Schema) []CompiledEnum {
+	if library == nil {
+		return nil
+	}
+	used := map[string]bool{}
+	for _, component := range components {
+		if component.Shared {
+			for _, field := range component.Fields {
+				used[field.Type] = true
+			}
+		}
+	}
+	var enums []CompiledEnum
+	for _, enumDef := range library.Enums {
+		if used[enumDef.Name] && !slices.ContainsFunc(local, func(e CompiledEnum) bool { return e.Name == enumDef.Name }) {
+			enums = append(enums, CompiledEnum(enumDef))
+		}
+	}
+	return enums
+}
+
 func compileSliceComponents(initialTargets map[string]bool, typeIndex, library map[string]*TypeDef) ([]CompiledComponent, error) {
 	if len(initialTargets) == 0 {
 		return []CompiledComponent{}, nil
@@ -319,11 +334,8 @@ func compileSliceComponents(initialTargets map[string]bool, typeIndex, library m
 		visited[componentName] = true
 
 		typeDef, local := typeIndex[componentName]
-		if next.libraryOnly {
-			local = false
-		}
-		if !local {
-			typeDef = library[componentName]
+		if libraryDef := library[componentName]; libraryDef != nil && (next.libraryOnly || !local) {
+			typeDef, local = libraryDef, false
 		}
 		if typeDef == nil {
 			return nil, fmt.Errorf("slice component type '%s' not found", componentName)

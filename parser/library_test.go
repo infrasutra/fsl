@@ -131,3 +131,44 @@ func TestDiffCoversSections(t *testing.T) {
 	required := DiffSchemas(before, compile("type Hero { heading: String!\n  subheading: Text\n  cta: String! }"))
 	assert.True(t, required.HasBreaking)
 }
+
+func TestLibraryReviewCases(t *testing.T) {
+	library, err := ParseLibrary(sectionLibrary + "\n\nenum Unused { a, b }")
+	require.NoError(t, err)
+	opts := Options{Library: library}
+
+	plain, err := ParseAndCompileWithOptions("type Plain { title: String! }", "Plain", "plain", false, opts)
+	require.NoError(t, err)
+	assert.Empty(t, plain.Enums, "library enums are added only for sections the page uses")
+
+	withFaq, err := ParseAndCompileWithOptions("type Page {\n  sections: JSON @slices(faq: Faq)\n}", "Page", "page", false, opts)
+	require.NoError(t, err)
+	assert.Empty(t, withFaq.Enums)
+
+	_, err = ParseAndCompileWithOptions("enum Tone { loud }\n\ntype Page {\n  sections: JSON @slices(hero: Hero)\n}", "Page", "page", false, opts)
+	assert.ErrorContains(t, err, "enum 'Tone' is already defined in the section library")
+
+	otherFile := ParseWithDiagnostics("type Card {\n  items: JSON! @slices(item: Item)\n}").Schema
+	cards, err := ParseAndCompileWithOptions("type Page {\n  sections: JSON @slices(card: Card)\n}\n\ntype Item { label: String! }", "Page", "page", false, Options{Library: otherFile})
+	require.NoError(t, err, "a library section may nest a type the page defines")
+	for _, c := range cards.Components {
+		assert.Equal(t, c.Name == "Card", c.Shared, c.Name)
+	}
+
+	result := ParseWithDiagnosticsAndOptions("// type Hero moved to the library\ntype HeroBanner { a: String }\ntype Hero { a: String }", opts)
+	require.False(t, result.Valid)
+	assert.Equal(t, 3, result.Diagnostics[0].StartLine)
+	assert.Equal(t, 6, result.Diagnostics[0].StartColumn)
+}
+
+func TestDiffSlicesKeys(t *testing.T) {
+	compile := func(slices string) *CompiledSchema {
+		compiled, err := ParseAndCompile("type Page {\n  sections: JSON @slices("+slices+")\n}\n\ntype Hero { a: String }\n\ntype Banner { a: String }", "Page", "page", false)
+		require.NoError(t, err)
+		return compiled
+	}
+	both := compile("hero: Hero, banner: Banner")
+	assert.True(t, DiffSchemas(both, compile("hero: Hero")).HasBreaking, "removing a key")
+	assert.True(t, DiffSchemas(both, compile("hero: Hero, banner: Hero")).HasBreaking, "retargeting a key")
+	assert.False(t, DiffSchemas(compile("hero: Hero"), both).HasBreaking, "adding a key")
+}
