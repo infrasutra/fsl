@@ -47,8 +47,8 @@ func TestGetBuiltinTemplates(t *testing.T) {
 				assert.NotEmpty(t, schema.ApiID, "schema api_id required in %s", tmpl.Slug)
 				assert.NotEmpty(t, schema.FSL, "schema FSL required in %s/%s", tmpl.Slug, schema.Name)
 
-				_, err := parser.ParseAndCompileWithExternalTypes(
-					schema.FSL, schema.Name, schema.ApiID, schema.IsSingleton, externalTypes,
+				_, err := parser.ParseAndCompileWithOptions(
+					schema.FSL, schema.Name, schema.ApiID, schema.IsSingleton, parser.Options{ExternalTypes: externalTypes},
 				)
 				if err != nil {
 					t.Errorf("FSL compile error in %s/%s: %v", tmpl.Slug, schema.Name, err)

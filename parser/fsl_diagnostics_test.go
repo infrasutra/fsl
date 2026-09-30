@@ -7,10 +7,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestParseWithDiagnosticsAndExternalTypes(t *testing.T) {
-	result := ParseWithDiagnosticsAndExternalTypes(`type Article {
+func TestParseWithDiagnosticsAndOptions(t *testing.T) {
+	result := ParseWithDiagnosticsAndOptions(`type Article {
   author: Author! @relation
-}`, []string{"Author"})
+}`, Options{ExternalTypes: []string{"Author"}})
 
 	require.NotNil(t, result)
 	assert.True(t, result.Valid)

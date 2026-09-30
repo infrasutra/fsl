@@ -7,12 +7,10 @@ import "fmt"
 // ExternalTypes are content types defined in other schemas; fields may use them
 // as relation targets. Library holds shared section types; @slices mappings may
 // reference them, and they are compiled into the schema's components with
-// Shared set. When RejectShadowing is true, a type defined in the schema with
-// the same name as a library type is an error; otherwise the local type wins.
+// Shared set. A schema may not define a type with the same name as a library type.
 type Options struct {
-	ExternalTypes   []string
-	Library         *Schema
-	RejectShadowing bool
+	ExternalTypes []string
+	Library       *Schema
 }
 
 // ParseWithDiagnosticsAndOptions parses and validates FSL against opts and
