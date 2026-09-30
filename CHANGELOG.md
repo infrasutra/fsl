@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `@label`, `@help` and `@placeholder` on fields.
 - `DiffSchemas` reports section type and section field changes, including breaking ones.
 - The CLI and language server resolve `@slices` targets from the other files in the schemas directory.
-
+- `LinterConfig.Workspace`: the `unused-types` rule counts `@slices` targets and uses from the other files in the schemas directory.
 - Open-source governance and contribution templates
 - Security policy and support guidance
+
+### Removed
+
+- `ParseAndCompileWithExternalTypes`, `ParseWithDiagnosticsAndExternalTypes`, `ValidateSchemaWithExternalTypes` and `NewValidatorWithExternalTypes`. Pass `parser.Options{ExternalTypes: …}` to the `…WithOptions` functions instead.
