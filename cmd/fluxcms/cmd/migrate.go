@@ -86,11 +86,9 @@ func init() {
 	migrateCmd.AddCommand(migrateCheckCmd)
 	migrateCmd.AddCommand(migrateDiffCmd)
 
-	// Common flags
 	migrateCmd.PersistentFlags().StringVar(&migrateSchemaPath, "schema", "", "Schema file or directory")
 	migrateCmd.PersistentFlags().StringVar(&migrateFormat, "format", "pretty", "Output format: pretty, json")
 
-	// Generate-specific flags
 	migrateGenerateCmd.Flags().StringVar(&migrateName, "name", "", "Migration name (required)")
 	migrateGenerateCmd.MarkFlagRequired("name")
 
@@ -112,8 +110,6 @@ func getSchemaPath() (string, error) {
 	return "", fmt.Errorf("no schema path specified (use --schema flag or set schemas.directory in .fluxcms.yaml)")
 }
 
-// loadPreviousState reads the most recent migration file and extracts stored compiled schemas.
-// Returns nil if no previous state exists (first migration).
 func loadPreviousState(migrationsDir string) (map[string]*parser.CompiledSchema, error) {
 	entries, err := os.ReadDir(migrationsDir)
 	if err != nil {
@@ -156,8 +152,6 @@ func loadPreviousState(migrationsDir string) (map[string]*parser.CompiledSchema,
 	return migration.SchemaState, nil
 }
 
-// diffCurrentVsPrevious diffs all current compiled schemas against a previous state.
-// If previous is nil, all types are treated as new additions.
 func diffCurrentVsPrevious(current, previous map[string]*parser.CompiledSchema) []parser.SchemaChange {
 	var allChanges []parser.SchemaChange
 
@@ -174,7 +168,6 @@ func diffCurrentVsPrevious(current, previous map[string]*parser.CompiledSchema) 
 		return allChanges
 	}
 
-	// Check for removed types
 	for typeName := range previous {
 		if _, exists := current[typeName]; !exists {
 			allChanges = append(allChanges, parser.SchemaChange{
@@ -187,7 +180,6 @@ func diffCurrentVsPrevious(current, previous map[string]*parser.CompiledSchema) 
 		}
 	}
 
-	// Check for added and modified types
 	for typeName, currentSchema := range current {
 		prevSchema, exists := previous[typeName]
 		if !exists {

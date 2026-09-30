@@ -28,13 +28,12 @@ func NewHandler(server *Server) *Handler {
 
 // Handle processes an incoming message
 func (h *Handler) Handle(msg *JSONRPCMessage) *JSONRPCMessage {
-	// Handle notifications (no ID)
+
 	if msg.ID == nil {
 		h.handleNotification(msg.Method, msg.Params)
 		return nil
 	}
 
-	// Handle requests
 	result, err := h.handleRequest(msg.Method, msg.Params)
 	if err != nil {
 		return &JSONRPCMessage{
@@ -152,7 +151,6 @@ func (h *Handler) handleDidChange(params json.RawMessage) {
 		return
 	}
 
-	// Full sync - use the last content change
 	if len(p.ContentChanges) > 0 {
 		lastChange := p.ContentChanges[len(p.ContentChanges)-1]
 		h.server.GetDocuments().Update(p.TextDocument.URI, lastChange.Text, p.TextDocument.Version)
@@ -176,7 +174,6 @@ func (h *Handler) handleDidSave(params json.RawMessage) {
 		return
 	}
 
-	// Re-publish diagnostics on save
 	h.publishDiagnostics(p.TextDocument.URI)
 }
 
