@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-30
+
 ### Added
 
 - Section libraries: `parser.Options` with `ExternalTypes` and `Library`, `ParseAndCompileWithOptions`, `CompileWithOptions`, `ParseWithDiagnosticsAndOptions`, `ValidateSchemaWithOptions`, `NewValidatorWithOptions`, `ParseLibrary` and `CompileLibrary`. `@slices` may reference library types; they compile into `components` with `shared: true`. A schema may not define a type the library already defines.
@@ -17,6 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `LinterConfig.Workspace`: the `unused-types` rule counts `@slices` targets and uses from the other files in the schemas directory.
 - Open-source governance and contribution templates
 - Security policy and support guidance
+
+### Changed
+
+- `DiffSchemas` reports removing a `@slices` key, pointing a key at another type, or adding `@slices` to an existing field as breaking.
+- The `unused-types` lint rule message now reads "is not used by any relation or @slices field".
+
+### Fixed
+
+- The TypeScript and Go SDKs declare an enum shared by several content types once instead of once per content type.
 
 ### Removed
 
