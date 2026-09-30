@@ -400,7 +400,7 @@ func compileField(field FieldDef) (CompiledField, error) {
 		compiledField.Decorators[k] = v
 	}
 
-	if field.Required {
+	if field.Array && field.ArrayReq || !field.Array && field.Required {
 		compiledField.Decorators[DecRequired] = true
 	}
 

@@ -172,3 +172,43 @@ func TestDiffSlicesKeys(t *testing.T) {
 	assert.True(t, DiffSchemas(both, compile("hero: Hero, banner: Hero")).HasBreaking, "retargeting a key")
 	assert.False(t, DiffSchemas(compile("hero: Hero"), both).HasBreaking, "adding a key")
 }
+
+func TestNamedEnumsAreValidated(t *testing.T) {
+	compiled, err := ParseAndCompile("enum Genre { scifi, drama }\n\ntype Book {\n  genre: Genre!\n  tags: [Genre]\n  sections: JSON @slices(quote: Quote)\n}\n\ntype Quote {\n  mood: Genre\n}", "Book", "book", false)
+	require.NoError(t, err)
+	assert.Empty(t, ValidateData(map[string]any{"genre": "drama", "tags": []any{"scifi"}}, compiled))
+
+	errs := ValidateData(map[string]any{
+		"genre":    "sci-fi",
+		"tags":     []any{"drama", "romance"},
+		"sections": []any{map[string]any{"type": "quote", "data": map[string]any{"mood": 42}}},
+	}, compiled)
+	fields := map[string]string{}
+	for _, e := range errs {
+		fields[e.Field] = e.Message
+	}
+	assert.Equal(t, "must be one of: scifi, drama", fields["genre"])
+	assert.Equal(t, "must be one of: scifi, drama", fields["tags[1]"])
+	assert.Equal(t, "must be one of: scifi, drama", fields["sections[0].data.mood"])
+}
+
+func TestOptionalListOfRequiredElements(t *testing.T) {
+	compiled, err := ParseAndCompile("type Post {\n  title: String!\n  tags: [String!]\n  links: [String!]!\n}", "Post", "post", false)
+	require.NoError(t, err)
+	required := map[string]bool{}
+	for _, f := range compiled.Fields {
+		required[f.Name] = f.Decorators[DecRequired] == true
+	}
+	assert.Equal(t, map[string]bool{"title": true, "tags": false, "links": true}, required)
+
+	errs := ValidateData(map[string]any{"title": "Hi", "links": []any{"a"}}, compiled)
+	assert.Empty(t, errs, "an optional list may be left out")
+	errs = ValidateData(map[string]any{"title": "Hi", "tags": nil, "links": []any{"a"}}, compiled)
+	assert.Empty(t, errs, "an optional list may be null")
+	errs = ValidateData(map[string]any{"title": "Hi"}, compiled)
+	require.Len(t, errs, 1)
+	assert.Equal(t, "links", errs[0].Field)
+	errs = ValidateData(map[string]any{"title": "Hi", "tags": []any{nil}, "links": []any{"a"}}, compiled)
+	require.Len(t, errs, 1)
+	assert.Equal(t, "tags[0]", errs[0].Field, "elements of [String!] still can't be null")
+}
