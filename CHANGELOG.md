@@ -15,9 +15,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DiffSchemas` reports section type and section field changes, including breaking ones.
 - The CLI and language server resolve `@slices` targets from the other files in the schemas directory.
 
-### Removed
-
-- `ParseAndCompileWithExternalTypes`, `ParseWithDiagnosticsAndExternalTypes`, `ValidateSchemaWithExternalTypes` and `NewValidatorWithExternalTypes`. Pass `parser.Options{ExternalTypes: …}` to the `…WithOptions` functions instead.
-
 - Open-source governance and contribution templates
 - Security policy and support guidance

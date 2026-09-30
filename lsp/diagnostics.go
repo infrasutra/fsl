@@ -11,7 +11,8 @@ import (
 // GetDiagnostics returns LSP diagnostics for a document
 func GetDiagnostics(doc *Document, workspaceDocs []*Document) []Diagnostic {
 	externalTypes := collectExternalTypes(doc, workspaceDocs)
-	result := parser.ParseWithDiagnosticsAndOptions(doc.Content, parser.Options{ExternalTypes: externalTypes, Library: collectLibrary(doc, workspaceDocs)})
+	library := collectLibrary(doc, workspaceDocs)
+	result := parser.ParseWithDiagnosticsAndOptions(doc.Content, parser.Options{ExternalTypes: externalTypes, Library: library})
 	if result == nil {
 		return []Diagnostic{}
 	}
@@ -53,7 +54,9 @@ func GetDiagnostics(doc *Document, workspaceDocs []*Document) []Diagnostic {
 		})
 	}
 
-	lintResults := parser.Lint(schema, parser.DefaultLinterConfig())
+	lintCfg := parser.DefaultLinterConfig()
+	lintCfg.Workspace = library
+	lintResults := parser.Lint(schema, lintCfg)
 	for _, lr := range lintResults {
 		sev := mapLintSeverity(lr.Rule.Severity)
 		rng := findLintNameRange(doc, lr)
