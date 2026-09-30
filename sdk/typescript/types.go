@@ -206,7 +206,7 @@ export interface ContentItem<T> {
   data: T;
   created_at: string;
   updated_at: string;
-  published_at: string;
+  published_at?: string;
   included?: Record<string, unknown>;
 }
 

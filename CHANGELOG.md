@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ValidateData` checks named enum values, in plain fields, lists and sections.
 - `[T!]` lists are optional; only `[T!]!` makes the list itself required, in validation, the compiled `required` decorator and the linter.
 - TypeScript SDK: the content client calls `/api/v1/content/{api_id}` with the delivery API's `page`, `limit`, `locale`, `sort`, `filter`, `fields` and `include` parameters, and `list` returns the paginated response; the CMS client calls `/api/v1/projects/...`.
-- TypeScript SDK: relations are typed `string | { id }`, rich text follows the editor's `content`/`attrs`/`marks` shape, `ContentItem` carries `included`, nested sections get their own types, input lists keep their array types, the generated client type-checks with `--strict`, and type names from display names with spaces are valid identifiers.
+- TypeScript SDK: relations are typed `string | { id }`, rich text follows the editor's `content`/`attrs`/`marks` shape, `ContentItem` carries `included` and an optional `published_at` (preview drafts have none), nested sections get their own types, input lists keep their array types, the generated client type-checks with `--strict`, and type names from display names with spaces are valid identifiers.
 
 ## [0.3.0] - 2026-09-30
 
